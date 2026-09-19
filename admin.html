@@ -222,6 +222,20 @@ th{color:var(--dim);font-weight:600;font-size:14px}
       <h2>ค่าระบบ</h2>
       <div style="overflow-x:auto"><table id="cfTable"></table></div>
     </div>
+
+    <div class="card">
+      <h2>ทดสอบแจ้งเตือน</h2>
+      <p class="muted" style="margin-top:0">ส่งข้อความทดสอบตามช่องทางที่ตั้งไว้ใน <code>NOTIFY_CHANNEL</code>
+        เพื่อดูว่าบอต Webex หรือ LINE ต่อถูกแล้วหรือยัง</p>
+      <div class="row">
+        <select id="ntAud" style="min-width:170px">
+          <option value="GUARD">ส่งหากลุ่ม รปภ.</option>
+          <option value="SUPERVISOR">ส่งหาหัวหน้าเวร</option>
+        </select>
+        <button class="sm" id="btnNotifyTest">ส่งข้อความทดสอบ</button>
+      </div>
+      <p class="muted" id="ntMsg" style="margin-bottom:0"></p>
+    </div>
   </div>
 </section>
 
@@ -624,6 +638,18 @@ function drawCfTable(){
     };
   });
 }
+
+$('btnNotifyTest').onclick=function(){
+  var b=this; b.disabled=true; $('ntMsg').textContent='กำลังส่ง…';
+  api('notifyTest',{audience:$('ntAud').value})
+    .then(function(j){
+      $('ntMsg').textContent='ส่งแล้วทางช่องทาง '+j.channel+
+        (j.webexTargets?(' · ปลายทาง Webex '+j.webexTargets+' รายการ'):'')+
+        ' — ไปดูในแอปปลายทางได้เลย';
+    })
+    .catch(function(e){ $('ntMsg').textContent='ส่งไม่สำเร็จ: '+e.message; })
+    .then(function(){ b.disabled=false; });
+};
 
 /* ===================== เริ่มทำงาน ===================== */
 (function(){
