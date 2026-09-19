@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#5b2d8e">
+<title>Office Love — หน้าหัวหน้าเวร</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#12101a;--card:#1e1b2b;--card2:#2a2540;--line:#3a3356;--txt:#f2eefb;
+  --dim:#a79fc2;--pri:#8b5cf6;--pri2:#a78bfa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--info:#38bdf8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:'Noto Sans Thai',system-ui,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:1040px;margin:0 auto;padding:16px 16px 60px}
+h1{font-size:23px;margin:0 0 2px} h2{font-size:19px;margin:0 0 12px} h3{font-size:17px;margin:0 0 8px}
+.muted{color:var(--dim);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .row.between{justify-content:space-between}
+.grow{flex:1}
+button{font-family:inherit;font-size:16px;font-weight:600;border:0;border-radius:12px;padding:11px 15px;
+  background:var(--pri);color:#fff;cursor:pointer;min-height:46px}
+.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.sm{font-size:14px;padding:7px 11px;min-height:36px}
+input,select{font-family:inherit;font-size:16px;padding:10px;border-radius:10px;
+  background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+label{display:block;font-size:14px;color:var(--dim);margin:8px 0 4px}
+
+/* ตัวชี้วัด */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kpi{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi .v{font-size:30px;font-weight:700;line-height:1.15}
+.kpi .l{font-size:13px;color:var(--dim)}
+.kpi.ok .v{color:#86efac} .kpi.warn .v{color:#fcd34d} .kpi.bad .v{color:#fca5a5}
+
+/* ตารางรอบ × จุด */
+.gridwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.board{border-collapse:separate;border-spacing:4px;min-width:560px}
+table.board th{font-size:13px;color:var(--dim);font-weight:600;padding:4px 6px;text-align:center;white-space:nowrap}
+table.board th.rh{text-align:right;min-width:92px}
+.cell{width:58px;height:50px;border-radius:10px;background:var(--card2);border:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:default;font-size:12px;line-height:1.25}
+.cell.done{background:rgba(34,197,94,.18);border-color:rgba(34,197,94,.45);cursor:pointer}
+.cell.flag{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.5);cursor:pointer}
+.cell.miss{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35)}
+.cell b{font-size:13px}
+.cell .mark{font-size:11px;opacity:.9}
+.rowlab{text-align:right;font-size:13px;padding-right:6px;white-space:nowrap}
+.rowlab b{font-size:15px}
+
+.pill{display:inline-block;font-size:13px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--dim)}
+.pill.ok{background:rgba(34,197,94,.18);color:#86efac}
+.pill.warn{background:rgba(245,158,11,.18);color:#fcd34d}
+.pill.bad{background:rgba(239,68,68,.18);color:#fca5a5}
+.pill.live{background:rgba(139,92,246,.24);color:#c4b5fd}
+
+.inc{border-left:4px solid var(--line);background:var(--card2);border-radius:0 12px 12px 0;
+  padding:12px 14px;margin-bottom:10px}
+.inc.HIGH{border-left-color:var(--bad)} .inc.MED{border-left-color:var(--warn)} .inc.LOW{border-left-color:var(--dim)}
+#map{height:300px;border-radius:14px;border:1px solid var(--line)}
+.leaflet-container{background:#1a1726}
+
+.modal{position:fixed;inset:0;z-index:999;background:rgba(6,5,12,.78);display:flex;align-items:flex-end;justify-content:center}
+.modal .box{background:var(--card);border:1px solid var(--line);border-radius:18px 18px 0 0;
+  width:100%;max-width:560px;max-height:88vh;overflow:auto;padding:18px}
+@media(min-width:640px){.modal{align-items:center}.modal .box{border-radius:18px}}
+.photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.photos a{display:block}
+.photos img{width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:10px 0}
+dt{color:var(--dim);font-size:14px} dd{margin:0;font-size:15px}
+.hide{display:none!important}
+.toast{position:fixed;left:16px;right:16px;bottom:18px;z-index:9999;padding:13px 16px;border-radius:12px;
+  background:var(--card2);border:1px solid var(--line);max-width:560px;margin:0 auto}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--dim);margin-top:10px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:5px;vertical-align:-1px}
+svg.chart{width:100%;height:150px;display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- เข้าสู่ระบบ -->
+<section id="scLogin">
+  <div style="text-align:center;margin:40px 0 20px">
+    <div style="font-size:46px">📋</div>
+    <h1>Office Love — หน้าหัวหน้าเวร</h1>
+    <p class="muted">สำหรับหัวหน้าเวรและผู้ดูแลระบบ</p>
+  </div>
+  <div class="card" style="max-width:420px;margin:0 auto">
+    <label>ชื่อผู้ใช้</label><input id="inUser" style="width:100%">
+    <label>รหัสผ่าน</label><input id="inPass" type="password" style="width:100%">
+    <div style="height:14px"></div>
+    <button id="btnLogin" style="width:100%">เข้าสู่ระบบ</button>
+    <p id="loginMsg" class="muted" style="text-align:center;margin:10px 0 0"></p>
+  </div>
+</section>
+
+<!-- แผงควบคุม -->
+<section id="scMain" class="hide">
+  <div class="row between" style="margin-bottom:14px">
+    <div><h1>หน้าหัวหน้าเวร</h1><span class="muted" id="whoami"></span></div>
+    <div class="row">
+      <button class="ghost sm" id="btnAuto">⏱ รีเฟรชอัตโนมัติ: เปิด</button>
+      <button class="ghost sm" id="btnLogout">ออก</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row between">
+      <div class="row">
+        <button class="ghost sm" id="btnPrev">‹ วันก่อน</button>
+        <input id="dPick" type="date" style="min-width:160px">
+        <button class="ghost sm" id="btnNext">วันถัดไป ›</button>
+        <button class="ghost sm" id="btnToday">วันนี้</button>
+      </div>
+      <span class="pill" id="dayPill"></span>
+    </div>
+    <div class="muted" style="margin-top:8px" id="lastSync"></div>
+  </div>
+
+  <div class="card">
+    <h2>ภาพรวมของวัน</h2>
+    <div class="kpis" id="kpis"></div>
+  </div>
+
+  <div class="card">
+    <h2>ตารางรอบ × จุดตรวจ</h2>
+    <div class="gridwrap"><table class="board" id="board"></table></div>
+    <div class="legend">
+      <span><i style="background:rgba(34,197,94,.45)"></i>เช็คอินแล้ว</span>
+      <span><i style="background:rgba(245,158,11,.5)"></i>มีข้อสังเกต</span>
+      <span><i style="background:rgba(239,68,68,.35)"></i>รอบปิดแล้วไม่มีเช็คอิน</span>
+      <span><i style="background:#2a2540"></i>ยังไม่ถึงเวลา</span>
+      <span>📷 มีรูป · ⚑ ทิศไม่ตรง · ⚠ ยืนยันเอง</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>ตำแหน่งที่เช็คอินจริง</h2>
+    <p class="muted" style="margin:-6px 0 10px">วงกลมคือรัศมีจุดตรวจ จุดเล็กคือตำแหน่งที่ รปภ. ยืนตอนกดบันทึก</p>
+    <div id="map"></div>
+  </div>
+
+  <div class="card">
+    <h2>เวรวันนี้</h2>
+    <div id="shiftList"></div>
+  </div>
+
+  <div class="card">
+    <div class="row between"><h2 style="margin:0">เหตุการณ์</h2><span class="pill" id="incCount"></span></div>
+    <div style="height:12px"></div>
+    <div id="incList"></div>
+  </div>
+
+  <div class="card">
+    <h2>ความครบรอบ 30 วันย้อนหลัง</h2>
+    <svg class="chart" id="chart" viewBox="0 0 600 150" preserveAspectRatio="none"></svg>
+    <div class="muted" id="chartNote"></div>
+  </div>
+</section>
+
+</div>
+
+<div id="modal" class="modal hide"><div class="box" id="modalBox"></div></div>
+<div id="toast" class="toast hide"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="config.js"></script>
+<script>
+/* ==========================================================================
+   ตั้งค่า — ใช้ URL เดียวกับ index.html และ admin.html
+   ========================================================================== */
+var API = window.OL_API || '';
+
+var $=function(id){return document.getElementById(id);};
+var S={ token:'', me:null, data:null, date:'', map:null, layer:null, timer:null, auto:true };
+
+function toast(m,ms){var t=$('toast');t.textContent=m;t.classList.remove('hide');
+  clearTimeout(t._t);t._t=setTimeout(function(){t.classList.add('hide');},ms||2600);}
+function api(action,body){
+  return fetch(API,{method:'POST',redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(Object.assign({action:action,token:S.token},body||{}))})
+  .then(function(r){return r.json();}).then(function(j){
+    if(!j.ok) throw new Error(j.error||'ผิดพลาด'); return j; });
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+function pad(n){return (n<10?'0':'')+n;}
+function hhmm(iso){ if(!iso) return '—'; var d=new Date(iso); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+function thaiDate(s){var d=new Date(s+'T12:00:00');
+  var m=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  var w=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  return w[d.getDay()]+'ที่ '+d.getDate()+' '+m[d.getMonth()]+' '+(d.getFullYear()+543);}
+function shiftDate(s,n){var d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function todayWork(){var n=new Date();var d=new Date(n);if(n.getHours()<6)d.setDate(d.getDate()-1);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+
+/* ===================== เข้าสู่ระบบ ===================== */
+$('btnLogin').onclick=function(){
+  var b=this;b.disabled=true;$('loginMsg').textContent='กำลังตรวจสอบ…';
+  api('login',{username:$('inUser').value.trim(),password:$('inPass').value})
+  .then(function(j){
+    if(['SUPERVISOR','ADMIN'].indexOf(j.user.role)<0) throw new Error('บัญชีนี้ไม่มีสิทธิ์ดูหน้าหัวหน้าเวร');
+    S.token=j.token;S.me=j.user;
+    try{localStorage.setItem('ol_sup_token',j.token);}catch(e){}
+    start();
+  }).catch(function(e){ $('loginMsg').textContent=e.message; })
+    .then(function(){ b.disabled=false; });
+};
+$('btnLogout').onclick=function(){
+  S.token='';clearInterval(S.timer);try{localStorage.removeItem('ol_sup_token');}catch(e){}
+  $('scMain').classList.add('hide');$('scLogin').classList.remove('hide');
+};
+
+/* ===================== โหลด ===================== */
+function start(){
+  $('scLogin').classList.add('hide');$('scMain').classList.remove('hide');
+  S.date=S.date||todayWork();
+  $('dPick').value=S.date;
+  load(); loadTrend(); setAuto(true);
+}
+function setAuto(on){
+  S.auto=on; clearInterval(S.timer);
+  $('btnAuto').textContent='⏱ รีเฟรชอัตโนมัติ: '+(on?'เปิด':'ปิด');
+  if(on) S.timer=setInterval(function(){ if(S.date===todayWork()) load(true); }, 90000);
+}
+$('btnAuto').onclick=function(){ setAuto(!S.auto); };
+$('btnPrev').onclick=function(){ S.date=shiftDate(S.date,-1); $('dPick').value=S.date; load(); };
+$('btnNext').onclick=function(){ S.date=shiftDate(S.date, 1); $('dPick').value=S.date; load(); };
+$('btnToday').onclick=function(){ S.date=todayWork(); $('dPick').value=S.date; load(); };
+$('dPick').onchange=function(){ S.date=this.value; load(); };
+
+function load(quiet){
+  if(!quiet) $('lastSync').textContent='กำลังโหลด…';
+  return api('supervisorBoard',{workDate:S.date}).then(function(j){
+    S.data=j;
+    S.me=j.user||S.me;
+    if(S.me) $('whoami').textContent=S.me.name+' · '+(S.me.role==='ADMIN'?'ผู้ดูแลระบบ':'หัวหน้าเวร');
+    var p=$('dayPill');
+    p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด · ':'วันทำการ · ')+j.rounds.length+' รอบ';
+    p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
+    $('lastSync').textContent=thaiDate(j.workDate)+' · อัปเดตล่าสุด '+hhmm(j.serverTime)+' น.';
+    drawKpis(); drawBoard(); drawMap(); drawShifts(); drawIncidents();
+  }).catch(function(e){ $('lastSync').textContent='โหลดไม่สำเร็จ: '+e.message; });
+}
+
+/* ===================== ตัวชี้วัด ===================== */
+function roundPassed(r){ return new Date(r.closeAt).getTime() < Date.now(); }
+
+function drawKpis(){
+  var d=S.data, R=d.rounds;
+  var closed=R.filter(roundPassed);
+  var complete=R.filter(function(r){return r.status==='COMPLETE';}).length;
+  var missed  =R.filter(function(r){return r.status==='MISSED';}).length;
+  var partial =R.filter(function(r){return r.status==='PARTIAL';}).length;
+  var started =R.filter(function(r){return r.startedAt;});
+  var onTime  =started.filter(function(r){
+    return new Date(r.startedAt).getTime()-new Date(r.schedAt).getTime() <= 15*60000; }).length;
+
+  var pctDone = closed.length ? Math.round(complete/closed.length*100) : (R.length?0:100);
+  var pctTime = started.length ? Math.round(onTime/started.length*100) : 100;
+  var pts = R.reduce(function(s,r){return s+r.pointsDone;},0);
+  var ptsTotal = closed.reduce(function(s,r){return s+r.pointsTotal;},0);
+  var pctPts = ptsTotal ? Math.round(Math.min(pts,ptsTotal)/ptsTotal*100) : 100;
+  var openInc = d.incidents.filter(function(i){return ['NEW','ACK','IN_PROGRESS'].indexOf(i.status)>=0;}).length;
+
+  function cls(v,good,warn){ return v>=good?'ok':(v>=warn?'warn':'bad'); }
+  $('kpis').innerHTML=
+    tile(pctDone+'%','ครบรอบ ('+complete+'/'+(closed.length||R.length)+' รอบที่ปิดแล้ว)',cls(pctDone,98,90))+
+    tile(pctTime+'%','ตรงเวลา (เริ่มภายใน 15 นาที)',cls(pctTime,95,85))+
+    tile(pctPts+'%','ครบจุด',cls(pctPts,98,90))+
+    tile(String(missed+partial),'รอบขาด / ไม่ครบ',(missed+partial)===0?'ok':'bad')+
+    tile(String(openInc),'เหตุที่ยังไม่ปิด',openInc===0?'ok':'warn');
+}
+function tile(v,l,k){ return '<div class="kpi '+k+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+
+/* ===================== ตารางรอบ × จุด ===================== */
+function drawBoard(){
+  var d=S.data;
+  if(!d.rounds.length){ $('board').innerHTML='<tr><td class="muted">ยังไม่มีรอบของวันนี้</td></tr>'; return; }
+
+  var map={};
+  d.checkins.forEach(function(c){ map[c.roundId+'|'+c.cpId]=c; });
+
+  var h='<tr><th class="rh">รอบ</th>';
+  d.checkpoints.forEach(function(cp){ h+='<th title="'+esc(cp.name)+'">'+esc(cp.code)+'</th>'; });
+  h+='<th>ผล</th></tr>';
+
+  d.rounds.forEach(function(r){
+    var st = r.status==='COMPLETE' ? '<span class="pill ok">ครบ</span>'
+           : r.status==='MISSED'   ? '<span class="pill bad">ขาด</span>'
+           : r.status==='PARTIAL'  ? '<span class="pill bad">ไม่ครบ</span>'
+           : roundPassed(r)        ? '<span class="pill bad">เลยเวลา</span>'
+           : (new Date(r.openAt).getTime()<=Date.now() ? '<span class="pill live">กำลังเดิน</span>'
+                                                       : '<span class="pill">รอเวลา</span>');
+    h+='<tr><td class="rowlab"><b>รอบ '+r.roundNo+'</b><br><span class="muted">'+hhmm(r.schedAt)+' น.</span></td>';
+    d.checkpoints.forEach(function(cp){
+      var c=map[r.roundId+'|'+cp.cpId];
+      if(c){
+        var flag = c.headingBad || c.overrideReason || c.verify==='WARN_ACCURACY' ||
+                   c.verify==='OVERRIDE' || c.verify==='NO_GPS';
+        var mark=(c.photos?'📷':'')+(c.headingBad?'⚑':'')+(c.overrideReason?'⚠':'');
+        h+='<td><div class="cell '+(flag?'flag':'done')+'" data-cin="'+esc(c.checkinId)+'">'+
+           '<b>'+hhmm(c.ts)+'</b><span class="mark">'+(mark||c.distanceM+' ม.')+'</span></div></td>';
+      }else{
+        h+='<td><div class="cell '+(roundPassed(r)?'miss':'')+'">'+(roundPassed(r)?'—':'')+'</div></td>';
+      }
+    });
+    h+='<td style="text-align:center">'+st+'</td></tr>';
+  });
+  $('board').innerHTML=h;
+
+  Array.prototype.forEach.call($('board').querySelectorAll('[data-cin]'),function(el){
+    el.onclick=function(){ openDetail(el.dataset.cin); };
+  });
+}
+
+/* ===================== แผนที่ ===================== */
+function drawMap(){
+  var d=S.data;
+  var c0=d.checkpoints[0];
+  if(!S.map){
+    S.map=L.map('map').setView(c0?[c0.lat,c0.lng]:[8.365,98.749],19);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:21,maxNativeZoom:19,attribution:'© OpenStreetMap'}).addTo(S.map);
+    S.layer=L.layerGroup().addTo(S.map);
+  }
+  S.layer.clearLayers();
+  d.checkpoints.forEach(function(cp){
+    L.circle([cp.lat,cp.lng],{radius:cp.radiusM,color:'#a78bfa',weight:1,fillOpacity:.08}).addTo(S.layer);
+    L.marker([cp.lat,cp.lng]).bindTooltip(cp.code,{permanent:true,direction:'top',offset:[0,-8]}).addTo(S.layer);
+  });
+  var pts=[];
+  d.checkins.forEach(function(c){
+    if(!c.lat || !c.lng) return;
+    var cp=d.checkpoints.filter(function(x){return x.cpId===c.cpId;})[0];
+    var col = (cp && c.distanceM<=cp.radiusM) ? '#22c55e' : '#ef4444';
+    var m=L.circleMarker([c.lat,c.lng],{radius:4,color:col,fillColor:col,fillOpacity:.9,weight:1});
+    m.bindTooltip((cp?cp.code:'?')+' · '+hhmm(c.ts)+' น. · ห่าง '+c.distanceM+' ม. · '+esc(c.userName));
+    m.on('click',function(){ openDetail(c.checkinId); });
+    m.addTo(S.layer); pts.push([c.lat,c.lng]);
+  });
+  d.checkpoints.forEach(function(cp){ pts.push([cp.lat,cp.lng]); });
+  if(pts.length) { try{ S.map.fitBounds(L.latLngBounds(pts).pad(0.35)); }catch(e){} }
+  setTimeout(function(){ S.map.invalidateSize(); },60);
+}
+
+/* ===================== เวร ===================== */
+function drawShifts(){
+  var s=S.data.shifts;
+  if(!s.length){ $('shiftList').innerHTML='<p class="muted">ยังไม่มีใครลงเวลาเข้าเวรของวันนี้</p>'; return; }
+  $('shiftList').innerHTML=s.map(function(x){
+    return '<div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)">'+
+      '<div><strong>'+esc(x.guardName)+'</strong><div class="muted">เข้า '+hhmm(x.checkInAt)+
+      ' น. · ออก '+(x.checkOutAt?hhmm(x.checkOutAt)+' น.':'ยังไม่ออก')+'</div></div>'+
+      '<span class="pill '+(x.status==='OPEN'?'live':'ok')+'">'+(x.status==='OPEN'?'อยู่เวร':'จบเวร')+'</span></div>';
+  }).join('');
+}
+
+/* ===================== เหตุการณ์ ===================== */
+function drawIncidents(){
+  var list=S.data.incidents;
+  var open=list.filter(function(i){return ['NEW','ACK','IN_PROGRESS'].indexOf(i.status)>=0;});
+  $('incCount').textContent='ยังไม่ปิด '+open.length+' เรื่อง';
+  $('incCount').className='pill '+(open.length?'warn':'ok');
+  if(!list.length){ $('incList').innerHTML='<p class="muted">ไม่มีเหตุการณ์</p>'; return; }
+
+  var sevTxt={HIGH:'รุนแรงสูง',MED:'ปานกลาง',LOW:'ต่ำ'};
+  var stTxt={NEW:'ใหม่',ACK:'รับทราบแล้ว',IN_PROGRESS:'กำลังดำเนินการ',CLOSED:'ปิดแล้ว'};
+  $('incList').innerHTML=list.map(function(i){
+    var closed=i.status==='CLOSED';
+    return '<div class="inc '+esc(i.severity)+'">'+
+      '<div class="row between"><strong>'+esc(i.title)+'</strong>'+
+      '<span class="pill '+(closed?'ok':(i.severity==='HIGH'?'bad':'warn'))+'">'+(stTxt[i.status]||i.status)+'</span></div>'+
+      '<div class="muted">'+esc(i.category)+' · '+(sevTxt[i.severity]||i.severity)+' · '+
+      esc(i.userName)+' · '+hhmm(i.ts)+' น. · '+esc(i.workDate)+'</div>'+
+      (i.detail?'<div style="margin-top:6px;font-size:15px">'+esc(i.detail)+'</div>':'')+
+      (closed?'':'<div class="row" style="margin-top:10px">'+
+        (i.status==='NEW'?'<button class="ghost sm" data-ack="'+esc(i.incId)+'">รับทราบ</button>':'')+
+        (i.status!=='IN_PROGRESS'?'<button class="ghost sm" data-prog="'+esc(i.incId)+'">กำลังดำเนินการ</button>':'')+
+        '<button class="sm" data-close="'+esc(i.incId)+'">ปิดเรื่อง</button></div>')+
+      '</div>';
+  }).join('');
+
+  function bind(attr,status,ask){
+    Array.prototype.forEach.call($('incList').querySelectorAll('['+attr+']'),function(b){
+      b.onclick=function(){
+        var note='';
+        if(ask){ note=prompt('สรุปการแก้ไขก่อนปิดเรื่อง:'); if(note===null) return; }
+        b.disabled=true;
+        api('incidentUpdate',{incId:b.getAttribute(attr),status:status,closeNote:note})
+          .then(function(){ toast('อัปเดตแล้ว'); return load(); })
+          .catch(function(e){ toast(e.message); b.disabled=false; });
+      };
+    });
+  }
+  bind('data-ack','ACK',false);
+  bind('data-prog','IN_PROGRESS',false);
+  bind('data-close','CLOSED',true);
+}
+
+/* ===================== รายละเอียดเช็คอิน ===================== */
+function openDetail(checkinId){
+  $('modal').classList.remove('hide');
+  $('modalBox').innerHTML='<p class="muted">กำลังโหลด…</p>';
+  api('checkinDetail',{checkinId:checkinId}).then(function(j){
+    var c=j.checkin;
+    var vTxt={PASS:'ผ่านปกติ',WARN_ACCURACY:'GPS ไม่แม่น',OVERRIDE:'ยืนยันเอง',NO_GPS:'ไม่มีพิกัด'};
+    var h='<div class="row between"><h2 style="margin:0">'+esc(c.cpName)+'</h2>'+
+          '<button class="ghost sm" id="mClose">ปิด</button></div>'+
+          '<dl>'+
+          '<dt>ผู้ตรวจ</dt><dd>'+esc(c.userName)+'</dd>'+
+          '<dt>เวลาบันทึก</dt><dd>'+hhmm(c.ts)+' น.</dd>'+
+          '<dt>ระยะจากจุด</dt><dd>'+c.distanceM+' เมตร (ความแม่น ±'+c.accuracyM+' ม.)</dd>'+
+          '<dt>ผลตรวจสอบ</dt><dd>'+(vTxt[c.verify]||esc(c.verify))+'</dd>'+
+          (c.overrideReason?'<dt>เหตุผลที่ยืนยันเอง</dt><dd>'+esc(c.overrideReason)+'</dd>':'')+
+          '<dt>พิกัด</dt><dd><a href="https://www.google.com/maps?q='+c.lat+','+c.lng+
+            '" target="_blank" rel="noopener">'+c.lat.toFixed(6)+', '+c.lng.toFixed(6)+'</a></dd>'+
+          '</dl>';
+
+    h+='<h3 style="margin-top:14px">เช็คลิสต์</h3>';
+    h+= j.answers.length ? j.answers.map(function(a){
+          return '<div class="row between" style="padding:7px 0;border-bottom:1px solid var(--line)">'+
+            '<span>'+esc(a.label)+(a.remark?'<br><span class="muted">'+esc(a.remark)+'</span>':'')+'</span>'+
+            '<span class="pill '+(a.value==='OK'?'ok':'bad')+'">'+(a.value==='OK'?'ปกติ':'ผิดปกติ')+'</span></div>';
+        }).join('') : '<p class="muted">ไม่มีรายการ</p>';
+
+    h+='<h3 style="margin-top:14px">รูปถ่าย ('+j.photos.length+')</h3>';
+    h+= j.photos.length ? '<div class="photos">'+j.photos.map(function(p){
+          var t=(p.heading!=null?p.heading+'°':'ไม่ทราบทิศ')+
+                (String(p.headingOk).toUpperCase()==='FALSE'?' ⚑ ทิศไม่ตรง':'');
+          return '<a href="'+esc(p.url)+'" target="_blank" rel="noopener" title="'+esc(t)+'">'+
+                 '<img src="'+esc(p.url)+'" alt=""><div class="muted" style="text-align:center">'+esc(t)+'</div></a>';
+        }).join('')+'</div>' : '<p class="muted">ไม่มีรูป</p>';
+
+    $('modalBox').innerHTML=h;
+    $('mClose').onclick=closeModal;
+  }).catch(function(e){ $('modalBox').innerHTML='<p>'+esc(e.message)+'</p>'; });
+}
+function closeModal(){ $('modal').classList.add('hide'); }
+$('modal').onclick=function(e){ if(e.target===this) closeModal(); };
+
+/* ===================== กราฟ 30 วัน ===================== */
+function loadTrend(){
+  api('trend',{days:30}).then(function(j){
+    var d=j.days;
+    if(!d.length){ $('chartNote').textContent='ยังไม่มีข้อมูลย้อนหลัง'; return; }
+    var W=600,H=150,pad=6,bw=Math.max(4,(W-pad*2)/d.length-3);
+    var s='';
+    d.forEach(function(x,i){
+      var pct = x.total ? x.complete/x.total : 0;
+      var h=Math.max(2,Math.round(pct*(H-24)));
+      var col = pct>=0.98?'#22c55e':(pct>=0.9?'#f59e0b':'#ef4444');
+      var X=pad+i*((W-pad*2)/d.length);
+      s+='<rect x="'+X.toFixed(1)+'" y="'+(H-14-h)+'" width="'+bw.toFixed(1)+'" height="'+h+
+         '" rx="2" fill="'+col+'"><title>'+x.workDate+' — ครบ '+x.complete+'/'+x.total+' รอบ</title></rect>';
+    });
+    s+='<line x1="0" y1="'+(H-14)+'" x2="'+W+'" y2="'+(H-14)+'" stroke="#3a3356" stroke-width="1"/>';
+    $('chart').innerHTML=s;
+    var tot=d.reduce(function(a,x){return a+x.total;},0);
+    var com=d.reduce(function(a,x){return a+x.complete;},0);
+    $('chartNote').textContent='รวม '+d.length+' วัน · ครบรอบ '+com+' จาก '+tot+' รอบ ('+
+      (tot?Math.round(com/tot*100):0)+'%) · แท่งเขียว ≥98% เหลือง ≥90% แดงต่ำกว่านั้น';
+  }).catch(function(e){ $('chartNote').textContent='โหลดกราฟไม่สำเร็จ: '+e.message; });
+}
+
+/* ===================== เริ่มทำงาน ===================== */
+(function(){
+  var t='';try{t=localStorage.getItem('ol_sup_token')||'';}catch(e){}
+  if(!t) return;
+  S.token=t;
+  api('supervisorBoard',{workDate:todayWork()}).then(function(j){
+    S.me=j.user; start();
+  }).catch(function(){ S.token=''; });
+})();
+</script>
+</body>
+</html>
