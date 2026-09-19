@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5b2d8e">
+<title>Office Love — เดินตรวจความปลอดภัย</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#12101a; --card:#1e1b2b; --card2:#2a2540; --line:#3a3356;
+  --txt:#f2eefb; --dim:#a79fc2; --pri:#8b5cf6; --pri2:#a78bfa;
+  --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --info:#38bdf8;
+  --r:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--txt);
+  font-family:'Noto Sans Thai',system-ui,sans-serif; font-size:18px; line-height:1.6;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px 40px}
+h1,h2,h3{margin:0 0 10px;line-height:1.35}
+h1{font-size:24px} h2{font-size:21px} h3{font-size:19px}
+.muted{color:var(--dim);font-size:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.row{display:flex;gap:10px;align-items:center}
+.row.between{justify-content:space-between}
+.grow{flex:1}
+button,.btn{
+  font-family:inherit;font-size:19px;font-weight:600;border:0;border-radius:14px;
+  padding:16px 18px;background:var(--pri);color:#fff;width:100%;cursor:pointer;
+  min-height:58px;display:flex;align-items:center;justify-content:center;gap:8px
+}
+button:active{transform:scale(.985)}
+button[disabled]{opacity:.45}
+.btn-ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.btn-ok{background:var(--ok)} .btn-warn{background:var(--warn);color:#241a00}
+.btn-bad{background:var(--bad)} .btn-sm{font-size:16px;padding:10px 14px;min-height:44px;width:auto}
+input,select,textarea{
+  font-family:inherit;font-size:18px;width:100%;padding:14px;border-radius:12px;
+  background:var(--card2);color:var(--txt);border:1px solid var(--line)
+}
+textarea{min-height:90px;resize:vertical}
+label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;
+  padding:4px 10px;border-radius:999px;background:var(--card2);color:var(--dim)}
+.pill.ok{background:rgba(34,197,94,.18);color:#86efac}
+.pill.warn{background:rgba(245,158,11,.18);color:#fcd34d}
+.pill.bad{background:rgba(239,68,68,.18);color:#fca5a5}
+.pill.live{background:rgba(139,92,246,.22);color:#c4b5fd}
+.round{display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;
+  background:var(--card2);border:1px solid var(--line);margin-bottom:10px;cursor:pointer}
+.round .no{width:44px;height:44px;border-radius:12px;background:var(--card);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:19px;flex:none}
+.round.cur{border-color:var(--pri2);box-shadow:0 0 0 2px rgba(167,139,250,.25)}
+.dots{display:flex;gap:5px;margin-top:4px}
+.dot{width:10px;height:10px;border-radius:50%;background:#4b4370}
+.dot.on{background:var(--ok)}
+.cp{display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;
+  background:var(--card2);border:1px solid var(--line);margin-bottom:10px}
+.cp.done{opacity:.55}
+.cp .code{width:40px;height:40px;border-radius:10px;background:var(--pri);
+  display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+.cp.done .code{background:var(--ok)}
+.topbar{position:sticky;top:0;z-index:20;background:rgba(18,16,26,.92);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 16px}
+.topbar .wrap{padding:0}
+.back{background:none;width:auto;min-height:auto;padding:6px 0;font-size:17px;color:var(--pri2)}
+.hide{display:none!important}
+.banner{padding:12px 14px;border-radius:12px;font-size:16px;margin-bottom:12px}
+.banner.warn{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4)}
+.banner.bad{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4)}
+.banner.ok{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4)}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;background:var(--card2);color:var(--dim);border:1px solid var(--line);font-size:17px}
+.seg button.sel-ok{background:var(--ok);color:#03210d;border-color:var(--ok)}
+.seg button.sel-ng{background:var(--bad);color:#fff;border-color:var(--bad)}
+.camwrap{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4}
+.camwrap video,.camwrap img.ghost{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.camwrap img.ghost{opacity:.35;pointer-events:none}
+.compass{position:absolute;left:0;right:0;bottom:0;padding:10px;text-align:center;
+  background:linear-gradient(transparent,rgba(0,0,0,.75));font-weight:700;font-size:17px}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.thumbs img{width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.toast{position:fixed;left:16px;right:16px;bottom:20px;z-index:99;padding:14px 16px;
+  border-radius:14px;background:var(--card2);border:1px solid var(--line);
+  font-size:17px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.queue{position:fixed;top:0;left:0;right:0;z-index:30;background:var(--warn);color:#241a00;
+  text-align:center;font-size:15px;font-weight:600;padding:6px}
+hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+a{color:var(--pri2)}
+</style>
+</head>
+<body>
+
+<div id="qbar" class="queue hide"></div>
+
+<!-- ───────────── เข้าสู่ระบบ ───────────── -->
+<section id="scLogin" class="wrap">
+  <div style="text-align:center;margin:40px 0 24px">
+    <div style="font-size:52px">🛡️</div>
+    <h1>Office Love</h1>
+    <p class="muted">ระบบเดินตรวจความปลอดภัยสำนักงาน<br>กฟส.อ่าวลึก</p>
+  </div>
+  <div class="card">
+    <label>ชื่อผู้ใช้ / เบอร์โทร</label>
+    <input id="inUser" inputmode="text" autocomplete="username">
+    <label>รหัสผ่าน</label>
+    <input id="inPass" type="password" autocomplete="current-password">
+    <div style="height:16px"></div>
+    <button id="btnLogin">เข้าสู่ระบบ</button>
+    <p id="loginMsg" class="muted" style="margin:12px 0 0;text-align:center"></p>
+  </div>
+</section>
+
+<!-- ───────────── หน้าหลัก ───────────── -->
+<section id="scHome" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <div><strong id="meName"></strong><div class="muted" id="meRole" style="font-size:14px"></div></div>
+    <button class="btn-ghost btn-sm" id="btnLogout">ออก</button>
+  </div></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="row between">
+        <div>
+          <div class="muted">วันปฏิบัติงาน</div>
+          <h2 id="wdText" style="margin:0"></h2>
+        </div>
+        <span class="pill" id="dayTypePill"></span>
+      </div>
+      <hr>
+      <div id="shiftBox"></div>
+    </div>
+
+    <h3>รอบเดินตรวจ</h3>
+    <div id="roundList"></div>
+
+    <button class="btn-ghost" id="btnIncidentHome" style="margin-top:8px">⚠️ แจ้งเหตุผิดปกติ</button>
+    <div id="staffLinks" class="hide" style="margin-top:10px">
+      <a class="btn btn-ghost" href="supervisor.html" style="text-decoration:none;margin-bottom:8px">📋 หน้าหัวหน้าเวร</a>
+      <a class="btn btn-ghost" id="lnkAdmin" href="admin.html" style="text-decoration:none">⚙️ ตั้งค่าระบบ</a>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── รายละเอียดรอบ ───────────── -->
+<section id="scRound" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackHome">‹ กลับ</button>
+    <strong id="roundTitle"></strong>
+    <span style="width:44px"></span>
+  </div></div>
+  <div class="wrap">
+    <div id="roundBanner"></div>
+    <div id="cpList"></div>
+    <button class="btn-ghost" id="btnIncidentRound">⚠️ แจ้งเหตุผิดปกติในรอบนี้</button>
+  </div>
+</section>
+
+<!-- ───────────── เช็คอินจุด ───────────── -->
+<section id="scCheck" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackRound">‹ กลับ</button>
+    <strong id="cpTitle"></strong>
+    <span style="width:44px"></span>
+  </div></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="row between">
+        <div><div class="muted">ตำแหน่งของคุณ</div><h3 id="gpsDist" style="margin:2px 0 0">กำลังหาสัญญาณ…</h3></div>
+        <span class="pill" id="gpsAcc">—</span>
+      </div>
+      <div id="gpsBanner" style="margin-top:12px"></div>
+      <button class="btn-ghost btn-sm" id="btnGpsAgain" style="margin-top:10px;width:100%">🔄 อ่านพิกัดใหม่</button>
+    </div>
+
+    <div class="card">
+      <h3>เช็คลิสต์</h3>
+      <div id="clList"></div>
+    </div>
+
+    <div class="card" id="photoCard">
+      <div class="row between"><h3 style="margin:0">รูปถ่าย</h3><span class="pill" id="photoReq"></span></div>
+      <p class="muted" id="photoHint" style="margin:6px 0 0"></p>
+      <div id="camArea" style="margin-top:12px"></div>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+
+    <button id="btnSaveCheckin">บันทึกเช็คอิน</button>
+  </div>
+</section>
+
+<!-- ───────────── แจ้งเหตุ ───────────── -->
+<section id="scInc" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnIncBack">‹ กลับ</button>
+    <strong>แจ้งเหตุผิดปกติ</strong>
+    <span style="width:44px"></span>
+  </div></div>
+  <div class="wrap">
+    <div class="card">
+      <label>หมวดเหตุ</label>
+      <select id="incCat"></select>
+      <label>ระดับความรุนแรง</label>
+      <select id="incSev">
+        <option value="LOW">ต่ำ — บันทึกไว้เฉย ๆ</option>
+        <option value="MED" selected>กลาง — ให้หัวหน้าทราบ</option>
+        <option value="HIGH">สูง — ต้องแจ้งทันที</option>
+      </select>
+      <label>หัวข้อสั้น ๆ</label>
+      <input id="incTitle" placeholder="เช่น ประตูคลังพัสดุไม่ได้ล็อก">
+      <label>รายละเอียด</label>
+      <textarea id="incDetail" placeholder="เกิดอะไรขึ้น ทำอะไรไปแล้ว"></textarea>
+      <label>รูปประกอบ</label>
+      <input id="incPhoto" type="file" accept="image/*" capture="environment" multiple>
+      <div class="thumbs" id="incThumbs"></div>
+      <div style="height:16px"></div>
+      <button id="btnSendInc">ส่งแจ้งเหตุ</button>
+    </div>
+  </div>
+</section>
+
+<div id="toast" class="toast hide"></div>
+
+<script src="config.js"></script>
+<script>
+/* ==========================================================================
+   ตั้งค่า — แก้ API ให้เป็น URL ของ GAS Web App ที่ deploy แล้ว
+   ========================================================================== */
+var API = window.OL_API || '';
+
+/* ========================= เครื่องมือพื้นฐาน ========================= */
+var $ = function(id){ return document.getElementById(id); };
+var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
+
+function show(id){
+  ['scLogin','scHome','scRound','scCheck','scInc'].forEach(function(s){
+    $(s).classList.toggle('hide', s!==id);
+  });
+  window.scrollTo(0,0);
+}
+function toast(msg, ms){
+  var t=$('toast'); t.textContent=msg; t.classList.remove('hide');
+  clearTimeout(t._t); t._t=setTimeout(function(){ t.classList.add('hide'); }, ms||2600);
+}
+function pad(n){ return (n<10?'0':'')+n; }
+function hhmm(iso){ var d=new Date(iso); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+function thaiDate(s){
+  var d=new Date(s+'T12:00:00');
+  var m=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return d.getDate()+' '+m[d.getMonth()]+' '+(d.getFullYear()+543);
+}
+
+/* ========================= เรียก API ========================= */
+function api(action, body){
+  var payload = Object.assign({ action:action, token:S.token }, body||{});
+  return fetch(API, {
+    method:'POST', redirect:'follow',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  }).then(function(r){ return r.json(); }).then(function(j){
+    if(!j.ok) throw new Error(j.error||'เกิดข้อผิดพลาด');
+    return j;
+  });
+}
+
+/* ========================= คิวออฟไลน์ (IndexedDB) ========================= */
+var DB=null;
+function idb(){
+  return new Promise(function(res,rej){
+    if(DB) return res(DB);
+    var rq=indexedDB.open('officelove',1);
+    rq.onupgradeneeded=function(e){ e.target.result.createObjectStore('queue',{keyPath:'id',autoIncrement:true}); };
+    rq.onsuccess=function(e){ DB=e.target.result; res(DB); };
+    rq.onerror=function(){ rej(new Error('เปิดฐานข้อมูลในเครื่องไม่ได้')); };
+  });
+}
+function qAdd(item){
+  return idb().then(function(db){
+    return new Promise(function(res,rej){
+      var tx=db.transaction('queue','readwrite');
+      tx.objectStore('queue').add({ at:Date.now(), item:item });
+      tx.oncomplete=function(){ res(); }; tx.onerror=function(){ rej(tx.error); };
+    });
+  }).then(qShow);
+}
+function qAll(){
+  return idb().then(function(db){
+    return new Promise(function(res,rej){
+      var tx=db.transaction('queue','readonly'), rq=tx.objectStore('queue').getAll();
+      rq.onsuccess=function(){ res(rq.result||[]); }; rq.onerror=function(){ rej(rq.error); };
+    });
+  });
+}
+function qDel(id){
+  return idb().then(function(db){
+    return new Promise(function(res){
+      var tx=db.transaction('queue','readwrite');
+      tx.objectStore('queue').delete(id); tx.oncomplete=function(){ res(); };
+    });
+  });
+}
+function qShow(){
+  return qAll().then(function(list){
+    var b=$('qbar');
+    if(!list.length){ b.classList.add('hide'); document.body.style.paddingTop=''; return 0; }
+    b.classList.remove('hide');
+    b.textContent='⏳ รอส่ง '+list.length+' รายการ — แตะเพื่อส่งเดี๋ยวนี้';
+    document.body.style.paddingTop='26px';
+    return list.length;
+  });
+}
+function qFlush(){
+  if(!navigator.onLine || !S.token) return Promise.resolve();
+  return qAll().then(function(list){
+    var chain=Promise.resolve();
+    list.forEach(function(rec){
+      chain=chain.then(function(){
+        return api(rec.item.action, rec.item.body)
+          .then(function(){ return qDel(rec.id); })
+          .catch(function(e){
+            // ข้อมูลซ้ำ = ส่งไปแล้ว ให้ลบออกจากคิว
+            if(/เช็คอินในรอบนี้ไปแล้ว/.test(e.message)) return qDel(rec.id);
+          });
+      });
+    });
+    return chain;
+  }).then(qShow).then(function(n){ if(n===0) toast('ส่งข้อมูลที่ค้างครบแล้ว'); });
+}
+$('qbar').onclick=function(){ qFlush(); };
+window.addEventListener('online', qFlush);
+
+/* ========================= GPS ========================= */
+function getPos(){
+  return new Promise(function(res,rej){
+    if(!navigator.geolocation) return rej(new Error('เครื่องนี้ไม่รองรับ GPS'));
+    navigator.geolocation.getCurrentPosition(
+      function(p){ S.pos=p; res(p); },
+      function(e){ rej(new Error(e.code===1?'ยังไม่ได้อนุญาตให้ใช้ตำแหน่ง':'อ่านพิกัดไม่สำเร็จ')); },
+      { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
+    );
+  });
+}
+function distM(a1,o1,a2,o2){
+  var R=6371000, r=Math.PI/180;
+  var dp=(a2-a1)*r, dl=(o2-o1)*r;
+  var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(a1*r)*Math.cos(a2*r)*Math.sin(dl/2)*Math.sin(dl/2);
+  return Math.round(R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)));
+}
+
+/* ========================= เข็มทิศ ========================= */
+var compassOn=false;
+function startCompass(){
+  if(compassOn) return Promise.resolve(true);
+  var attach=function(){
+    compassOn=true;
+    window.addEventListener('deviceorientationabsolute', onOri, true);
+    window.addEventListener('deviceorientation', onOri, true);
+    return true;
+  };
+  if(typeof DeviceOrientationEvent!=='undefined' && DeviceOrientationEvent.requestPermission){
+    return DeviceOrientationEvent.requestPermission()
+      .then(function(r){ return r==='granted' ? attach() : false; })
+      .catch(function(){ return false; });
+  }
+  return Promise.resolve(attach());
+}
+function onOri(e){
+  var h=null;
+  if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading;         // iOS
+  else if(e.absolute && e.alpha!=null) h=(360-e.alpha)%360;          // Android absolute
+  else if(e.alpha!=null) h=(360-e.alpha)%360;
+  if(h!=null){ S.heading=Math.round(h); paintCompass(); }
+}
+function angDiff(a,b){ var d=Math.abs(((a-b)%360+540)%360-180); return Math.round(d); }
+function dirName(d){
+  var n=['เหนือ','ต.อ.เฉียงเหนือ','ตะวันออก','ต.อ.เฉียงใต้','ใต้','ต.ต.เฉียงใต้','ตะวันตก','ต.ต.เฉียงเหนือ'];
+  return n[Math.round(((d%360)+360)%360/45)%8];
+}
+
+/* ========================= เข้าสู่ระบบ ========================= */
+$('btnLogin').onclick=function(){
+  var u=$('inUser').value.trim(), p=$('inPass').value;
+  if(!u||!p){ $('loginMsg').textContent='กรอกให้ครบทั้งสองช่อง'; return; }
+  this.disabled=true; $('loginMsg').textContent='กำลังตรวจสอบ…';
+  var btn=this;
+  api('login',{username:u,password:p}).then(function(j){
+    S.token=j.token; S.me=j.user;
+    try{ localStorage.setItem('ol_token', j.token); }catch(e){}
+    return loadHome();
+  }).catch(function(e){
+    $('loginMsg').textContent=e.message;
+  }).then(function(){ btn.disabled=false; });
+};
+$('btnLogout').onclick=function(){
+  if(!confirm('ออกจากระบบ?')) return;
+  S.token=''; try{ localStorage.removeItem('ol_token'); }catch(e){}
+  show('scLogin');
+};
+
+/* ========================= หน้าหลัก ========================= */
+function loadHome(){
+  return api('bootstrap').then(function(j){
+    S.boot=j; S.me=j.user;
+    $('meName').textContent=j.user.name;
+    $('meRole').textContent=({GUARD:'พนักงานรักษาความปลอดภัย',SUPERVISOR:'หัวหน้าเวร',ADMIN:'ผู้ดูแลระบบ'})[j.user.role]||j.user.role;
+    $('wdText').textContent=thaiDate(j.workDate);
+    var p=$('dayTypePill');
+    p.textContent=j.dayType==='HOLIDAY'?'วันหยุด · 10 รอบ':'วันทำการ · 6 รอบ';
+    p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
+    paintShift(); paintRounds();
+    var staff = j.user.role==='SUPERVISOR' || j.user.role==='ADMIN';
+    $('staffLinks').classList.toggle('hide', !staff);
+    $('lnkAdmin').classList.toggle('hide', j.user.role!=='ADMIN');
+    var sel=$('incCat'); sel.innerHTML='';
+    j.categories.forEach(function(c){
+      var o=document.createElement('option'); o.value=c.trim(); o.textContent=c.trim(); sel.appendChild(o);
+    });
+    show('scHome'); qFlush();
+  });
+}
+
+function paintShift(){
+  var b=$('shiftBox');
+  if(S.boot.shift){
+    b.innerHTML='<div class="row between"><div><div class="muted">เข้าเวรเมื่อ</div>'+
+      '<h3 style="margin:2px 0 0">'+hhmm(S.boot.shift.checkInAt)+' น.</h3></div>'+
+      '<span class="pill ok">อยู่ระหว่างเวร</span></div>'+
+      '<div style="height:12px"></div><button class="btn-ghost" id="btnOut">ออกเวร</button>';
+    $('btnOut').onclick=function(){
+      if(!confirm('ยืนยันออกเวร?')) return;
+      var btn=this; btn.disabled=true;
+      getPos().catch(function(){ return null; }).then(function(p){
+        return api('shiftOut', p?{lat:p.coords.latitude,lng:p.coords.longitude}:{});
+      }).then(function(){ toast('ออกเวรเรียบร้อย'); return loadHome(); })
+        .catch(function(e){ toast(e.message); btn.disabled=false; });
+    };
+  }else{
+    b.innerHTML='<p class="muted" style="margin:0 0 12px">ยังไม่ได้ลงเวลาเข้าเวร — กดปุ่มด้านล่างก่อนเริ่มเดินตรวจ</p>'+
+      '<button id="btnIn">🕕 ลงเวลาเข้าเวร</button>';
+    $('btnIn').onclick=function(){
+      var btn=this; btn.disabled=true; toast('กำลังอ่านพิกัด…');
+      getPos().catch(function(){ return null; }).then(function(p){
+        return api('shiftIn', p?{lat:p.coords.latitude,lng:p.coords.longitude}:{});
+      }).then(function(){ toast('เข้าเวรเรียบร้อย'); return loadHome(); })
+        .catch(function(e){ toast(e.message); btn.disabled=false; });
+    };
+  }
+}
+
+function roundState(r){
+  var now=Date.now(), open=new Date(r.openAt).getTime(), close=new Date(r.closeAt).getTime();
+  if(r.status==='COMPLETE') return {k:'ok', t:'ครบแล้ว'};
+  if(r.status==='MISSED')   return {k:'bad',t:'ขาด'};
+  if(r.status==='PARTIAL')  return {k:'bad',t:'ไม่ครบจุด'};
+  if(now<open)              return {k:'',   t:'ยังไม่ถึงเวลา'};
+  if(now>close)             return {k:'bad',t:'เลยเวลา'};
+  var late=now-new Date(r.schedAt).getTime();
+  if(late>15*60000)         return {k:'warn',t:'สาย '+Math.round(late/60000)+' นาที'};
+  return {k:'live', t:'ถึงเวลาแล้ว'};
+}
+
+function paintRounds(){
+  var box=$('roundList'); box.innerHTML='';
+  S.boot.rounds.forEach(function(r){
+    var st=roundState(r);
+    var div=document.createElement('div');
+    div.className='round'+(st.k==='live'?' cur':'');
+    var dots='';
+    for(var i=0;i<r.pointsTotal;i++) dots+='<span class="dot'+(i<r.pointsDone?' on':'')+'"></span>';
+    div.innerHTML='<div class="no">'+r.roundNo+'</div>'+
+      '<div class="grow"><strong>'+hhmm(r.schedAt)+' น.</strong>'+
+      '<div class="dots">'+dots+'</div></div>'+
+      '<span class="pill '+st.k+'">'+st.t+'</span>';
+    div.onclick=function(){ openRound(r); };
+    box.appendChild(div);
+  });
+}
+
+/* ========================= รอบ ========================= */
+function openRound(r){
+  S.round=r;
+  $('roundTitle').textContent='รอบ '+r.roundNo+' · '+hhmm(r.schedAt)+' น.';
+  var st=roundState(r);
+  var b=$('roundBanner');
+  if(st.k==='bad')       b.innerHTML='<div class="banner bad">รอบนี้'+st.t+' — บันทึกได้แต่จะถูกทำเครื่องหมายไว้</div>';
+  else if(st.k==='warn') b.innerHTML='<div class="banner warn">'+st.t+' รีบเดินให้ครบก่อนปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
+  else if(st.k==='')     b.innerHTML='<div class="banner warn">รอบนี้เริ่มได้ตั้งแต่ '+hhmm(r.openAt)+' น.</div>';
+  else                   b.innerHTML='<div class="banner ok">เดินได้เลย ปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
+  paintCps(); show('scRound');
+}
+
+function doneIn(roundId){ return (S.boot.done&&S.boot.done[roundId])||[]; }
+
+function paintCps(){
+  var box=$('cpList'); box.innerHTML='';
+  var done=doneIn(S.round.roundId);
+  S.boot.checkpoints.forEach(function(cp){
+    var isDone=done.indexOf(cp.cpId)>=0;
+    var div=document.createElement('div');
+    div.className='cp'+(isDone?' done':'');
+    div.innerHTML='<div class="code">'+(isDone?'✓':cp.code)+'</div>'+
+      '<div class="grow"><strong>'+cp.name+'</strong>'+
+      (cp.requirePhoto?'<div class="muted" style="font-size:14px">📷 ต้องถ่ายรูป'+
+        (cp.photoHeading!=null?' · หันไปทาง'+dirName(cp.photoHeading):'')+'</div>':'')+'</div>'+
+      (isDone?'<span class="pill ok">เสร็จ</span>':'<span class="pill">แตะ</span>');
+    if(!isDone) div.onclick=function(){ openCheck(cp); };
+    box.appendChild(div);
+  });
+}
+
+/* ========================= เช็คอิน ========================= */
+function openCheck(cp){
+  S.cp=cp; S.photos=[];
+  $('cpTitle').textContent=cp.code+' · '+cp.name;
+  $('photoReq').textContent=cp.requirePhoto?'บังคับ':'ไม่บังคับ';
+  $('photoReq').className='pill '+(cp.requirePhoto?'warn':'');
+  $('photoHint').textContent=cp.photoHint||'';
+  $('thumbs').innerHTML='';
+  paintChecklist(); buildCam(); show('scCheck'); refreshGps();
+}
+
+function refreshGps(){
+  $('gpsDist').textContent='กำลังหาสัญญาณ…';
+  $('gpsBanner').innerHTML=''; $('gpsAcc').textContent='—';
+  getPos().then(function(p){
+    var d=distM(p.coords.latitude,p.coords.longitude,S.cp.lat,S.cp.lng);
+    var acc=Math.round(p.coords.accuracy);
+    $('gpsDist').textContent='ห่างจุดนี้ '+d+' เมตร';
+    $('gpsAcc').textContent='±'+acc+' ม.';
+    $('gpsAcc').className='pill '+(acc<=30?'ok':'warn');
+
+    // จุดอื่นที่ใกล้เคียงกัน
+    var near=S.boot.checkpoints.map(function(c){
+      return { c:c, d:distM(p.coords.latitude,p.coords.longitude,c.lat,c.lng) };
+    }).sort(function(a,b){ return a.d-b.d; });
+
+    var html='';
+    if(d>S.cp.radiusM)
+      html+='<div class="banner bad">อยู่นอกรัศมี '+S.cp.radiusM+' ม. — เดินเข้าใกล้อีกหน่อย '+
+            'หรือถ้าจำเป็นให้ใส่เหตุผลตอนบันทึก</div>';
+    else if(acc>30)
+      html+='<div class="banner warn">สัญญาณ GPS ไม่ค่อยดี (±'+acc+' ม.) ระบบจะติดธงไว้ให้หัวหน้าดู</div>';
+    else if(near.length>1 && near[0].c.cpId===S.cp.cpId && (near[1].d-near[0].d)<10)
+      html+='<div class="banner warn">จุดนี้กับ "'+near[1].c.name+'" อยู่ใกล้กันมาก โปรดตรวจว่าเลือกจุดถูก</div>';
+    else
+      html+='<div class="banner ok">อยู่ในจุดแล้ว พร้อมบันทึก</div>';
+    $('gpsBanner').innerHTML=html;
+  }).catch(function(e){
+    $('gpsDist').textContent='อ่านพิกัดไม่ได้';
+    $('gpsBanner').innerHTML='<div class="banner bad">'+e.message+
+      ' — บันทึกได้แต่ต้องถ่ายรูปและใส่เหตุผล</div>';
+  });
+}
+$('btnGpsAgain').onclick=refreshGps;
+
+function paintChecklist(){
+  var box=$('clList'); box.innerHTML='';
+  var items=S.boot.checklist.filter(function(i){ return i.cpId==='ALL'||i.cpId===S.cp.cpId; });
+  if(!items.length){ box.innerHTML='<p class="muted">ไม่มีรายการตรวจสำหรับจุดนี้</p>'; return; }
+  items.forEach(function(it){
+    var wrap=document.createElement('div');
+    wrap.style.marginBottom='16px';
+    wrap.innerHTML='<div style="margin-bottom:8px"><strong>'+it.label+'</strong>'+
+      (it.required?' <span class="pill warn">ต้องตอบ</span>':'')+'</div>'+
+      '<div class="seg"><button type="button" data-v="OK">ปกติ</button>'+
+      '<button type="button" data-v="NG">ผิดปกติ</button></div>'+
+      '<input class="remark hide" placeholder="ผิดปกติอย่างไร" style="margin-top:10px">';
+    var btns=wrap.querySelectorAll('.seg button');
+    var remark=wrap.querySelector('.remark');
+    btns.forEach(function(b){
+      b.onclick=function(){
+        btns.forEach(function(x){ x.className=''; });
+        b.className = b.dataset.v==='OK' ? 'sel-ok' : 'sel-ng';
+        wrap.dataset.value=b.dataset.v;
+        remark.classList.toggle('hide', b.dataset.v!=='NG');
+      };
+    });
+    wrap.dataset.itemId=it.itemId;
+    wrap.dataset.required=it.required?'1':'';
+    box.appendChild(wrap);
+  });
+}
+
+/* ---------- กล้อง: ซ้อนรูปตัวอย่าง + เข็มทิศ ---------- */
+var stream=null;
+function stopCam(){ if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream=null; } }
+
+function buildCam(){
+  stopCam();
+  var area=$('camArea'); area.innerHTML='';
+  var cp=S.cp;
+
+  var live=document.createElement('div');
+  live.innerHTML=
+    '<div class="camwrap" id="camBox">'+
+      '<video id="vid" playsinline muted autoplay></video>'+
+      (cp.refPhotoUrl?'<img class="ghost" src="'+cp.refPhotoUrl+'" alt="">':'')+
+      '<div class="compass" id="cmp">เข็มทิศ: ยังไม่ได้เปิด</div>'+
+    '</div>'+
+    '<div style="height:10px"></div>'+
+    '<button id="btnShot">📸 ถ่ายรูป</button>'+
+    '<div style="height:8px"></div>'+
+    '<label style="margin:0">หรือใช้กล้องของเครื่อง</label>'+
+    '<input id="filePhoto" type="file" accept="image/*" capture="environment">';
+  area.appendChild(live);
+
+  $('filePhoto').onchange=function(e){
+    Array.prototype.forEach.call(e.target.files, function(f){
+      shrink(f).then(function(d){ addPhoto(d); });
+    });
+    e.target.value='';
+  };
+
+  startCompass().then(function(okc){
+    if(!okc) $('cmp').textContent='เครื่องนี้อ่านเข็มทิศไม่ได้ — ใช้ภาพตัวอย่างเทียบแทน';
+    paintCompass();
+  });
+
+  navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false })
+    .then(function(s){ stream=s; $('vid').srcObject=s; })
+    .catch(function(){
+      $('camBox').innerHTML='<div style="padding:24px;text-align:center" class="muted">'+
+        'เปิดกล้องในหน้าเว็บไม่ได้<br>ใช้ปุ่ม "กล้องของเครื่อง" ด้านล่างแทน</div>';
+      $('btnShot').disabled=true;
+    });
+
+  $('btnShot').onclick=function(){
+    var v=$('vid');
+    if(!v||!v.videoWidth) return toast('กล้องยังไม่พร้อม');
+    var c=document.createElement('canvas');
+    var w=Math.min(1280, v.videoWidth);
+    c.width=w; c.height=Math.round(v.videoHeight*(w/v.videoWidth));
+    c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+    addPhoto(c.toDataURL('image/jpeg',0.7));
+  };
+}
+
+function paintCompass(){
+  var el=$('cmp'); if(!el) return;
+  var cp=S.cp; if(!cp) return;
+  if(S.heading==null){ el.textContent='เข็มทิศ: กำลังอ่าน…'; return; }
+  if(cp.photoHeading==null){
+    el.textContent='ทิศปัจจุบัน '+S.heading+'° ('+dirName(S.heading)+') · จุดนี้ไม่บังคับทิศ';
+    el.style.color='#fff'; return;
+  }
+  var diff=angDiff(S.heading, cp.photoHeading);
+  if(diff<=cp.headingTol){
+    el.textContent='✅ ทิศถูกแล้ว ('+S.heading+'° / ต้องการ '+cp.photoHeading+'°)';
+    el.style.color='#86efac';
+  }else{
+    var delta=((cp.photoHeading-S.heading)%360+540)%360-180;
+    el.textContent=(delta>0?'↻ หมุนขวา ':'↺ หมุนซ้าย ')+Math.abs(Math.round(delta))+'° '+
+                   '(ต้องการ '+cp.photoHeading+'° · '+dirName(cp.photoHeading)+')';
+    el.style.color='#fcd34d';
+  }
+}
+
+function shrink(file){
+  return new Promise(function(res){
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function(){
+      var w=Math.min(1280,img.width), h=Math.round(img.height*(w/img.width));
+      var c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg',0.7));
+    };
+    img.src=url;
+  });
+}
+
+function addPhoto(dataUrl){
+  var cp=S.cp;
+  var ok='';
+  if(cp && cp.photoHeading!=null && S.heading!=null)
+    ok = angDiff(S.heading, cp.photoHeading)<=cp.headingTol ? 'TRUE':'FALSE';
+  S.photos.push({ dataUrl:dataUrl, heading:S.heading, headingOk:ok });
+  var im=document.createElement('img'); im.src=dataUrl;
+  im.title=(S.heading!=null?S.heading+'°':'ไม่ทราบทิศ');
+  $('thumbs').appendChild(im);
+  if(ok==='FALSE') toast('ถ่ายแล้ว แต่ทิศยังไม่ตรง ระบบจะติดธงไว้');
+  else toast('เพิ่มรูปแล้ว');
+}
+
+/* ---------- บันทึกเช็คอิน ---------- */
+$('btnSaveCheckin').onclick=function(){
+  var cp=S.cp, btn=this;
+  var answers=[], missing=false;
+  Array.prototype.forEach.call($('clList').children, function(w){
+    if(!w.dataset.itemId) return;
+    if(!w.dataset.value){ if(w.dataset.required) missing=true; return; }
+    answers.push({ itemId:w.dataset.itemId, value:w.dataset.value,
+                   remark:(w.querySelector('.remark')||{}).value||'' });
+  });
+  if(missing) return toast('ยังตอบเช็คลิสต์ไม่ครบ');
+  if(cp.requirePhoto && !S.photos.length) return toast('จุดนี้ต้องถ่ายรูปอย่างน้อย 1 รูป');
+
+  var p=S.pos, body={
+    roundId:S.round.roundId, cpId:cp.cpId,
+    lat:p?p.coords.latitude:0, lng:p?p.coords.longitude:0,
+    accuracyM:p?Math.round(p.coords.accuracy):999,
+    clientTs:new Date().toISOString(), ua:navigator.userAgent,
+    answers:answers, photos:S.photos, overrideReason:''
+  };
+
+  var d=p?distM(p.coords.latitude,p.coords.longitude,cp.lat,cp.lng):-1;
+  if(d<0 || d>cp.radiusM){
+    var why=prompt('อยู่นอกรัศมีจุดตรวจ ('+(d<0?'ไม่มีพิกัด':d+' ม.')+')\nใส่เหตุผลเพื่อบันทึกแบบยืนยันเอง:');
+    if(!why) return;
+    body.overrideReason=why;
+    if(!S.photos.length) return toast('กรณียืนยันเอง ต้องมีรูปประกอบ');
+  }
+
+  btn.disabled=true; btn.textContent='กำลังบันทึก…';
+  var finish=function(msg){
+    stopCam(); toast(msg);
+    btn.disabled=false; btn.textContent='บันทึกเช็คอิน';
+    loadHome().then(function(){
+      var r=S.boot.rounds.filter(function(x){ return x.roundId===body.roundId; })[0];
+      if(r) openRound(r);
+    });
+  };
+
+  if(!navigator.onLine){
+    qAdd({ action:'checkin', body:body }).then(function(){
+      // ทำเครื่องหมายไว้ในเครื่องก่อน เพื่อไม่ให้กดซ้ำ
+      if(!S.boot.done[body.roundId]) S.boot.done[body.roundId]=[];
+      S.boot.done[body.roundId].push(cp.cpId);
+      stopCam(); toast('ไม่มีเน็ต — เก็บไว้ในคิวแล้ว'); paintCps(); show('scRound');
+      btn.disabled=false; btn.textContent='บันทึกเช็คอิน';
+    });
+    return;
+  }
+
+  api('checkin', body).then(function(j){
+    finish('บันทึกแล้ว ('+j.pointsDone+'/'+j.pointsTotal+' จุด)');
+  }).catch(function(e){
+    if(/Failed to fetch|NetworkError/i.test(e.message)){
+      qAdd({ action:'checkin', body:body }).then(function(){
+        finish('เน็ตขัดข้อง — เก็บไว้ในคิวแล้ว');
+      });
+    }else{
+      toast(e.message); btn.disabled=false; btn.textContent='บันทึกเช็คอิน';
+    }
+  });
+};
+
+/* ========================= แจ้งเหตุ ========================= */
+function openInc(){ S.incPhotos=[]; $('incThumbs').innerHTML=''; $('incTitle').value=''; $('incDetail').value=''; show('scInc'); }
+$('btnIncidentHome').onclick=openInc;
+$('btnIncidentRound').onclick=openInc;
+$('btnIncBack').onclick=function(){ show(S.round?'scRound':'scHome'); };
+$('incPhoto').onchange=function(e){
+  Array.prototype.forEach.call(e.target.files, function(f){
+    shrink(f).then(function(d){
+      S.incPhotos.push({ dataUrl:d, heading:S.heading });
+      var im=document.createElement('img'); im.src=d; $('incThumbs').appendChild(im);
+    });
+  });
+  e.target.value='';
+};
+$('btnSendInc').onclick=function(){
+  var t=$('incTitle').value.trim();
+  if(!t) return toast('ใส่หัวข้อสั้น ๆ ก่อน');
+  var btn=this; btn.disabled=true; btn.textContent='กำลังส่ง…';
+  getPos().catch(function(){ return null; }).then(function(p){
+    var body={
+      roundId:S.round?S.round.roundId:'', cpId:S.cp?S.cp.cpId:'',
+      category:$('incCat').value, severity:$('incSev').value,
+      title:t, detail:$('incDetail').value,
+      lat:p?p.coords.latitude:0, lng:p?p.coords.longitude:0, photos:S.incPhotos
+    };
+    if(!navigator.onLine) return qAdd({action:'incident',body:body}).then(function(){ return {queued:true}; });
+    return api('incident', body);
+  }).then(function(r){
+    toast(r && r.queued ? 'ไม่มีเน็ต — เก็บไว้ในคิวแล้ว' : 'ส่งแจ้งเหตุเรียบร้อย');
+    btn.disabled=false; btn.textContent='ส่งแจ้งเหตุ';
+    show(S.round?'scRound':'scHome');
+  }).catch(function(e){
+    toast(e.message); btn.disabled=false; btn.textContent='ส่งแจ้งเหตุ';
+  });
+};
+
+/* ========================= ปุ่มย้อนกลับ ========================= */
+$('btnBackHome').onclick=function(){ loadHome(); };
+$('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
+
+/* ========================= เริ่มทำงาน ========================= */
+(function init(){
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
+  qShow();
+  var t='';
+  try{ t=localStorage.getItem('ol_token')||''; }catch(e){}
+  if(!t){ show('scLogin'); return; }
+  S.token=t;
+  loadHome().catch(function(){ show('scLogin'); });
+})();
+</script>
+</body>
+</html>
