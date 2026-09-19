@@ -40,12 +40,12 @@ var SCHEMA = {
   Checkpoints    : ['cpId','code','name','lat','lng','radiusM','orderNo','requirePhoto',
                     'photoHeading','headingTol','refPhotoFileId','photoHint','active','note'],
   ChecklistItems : ['itemId','cpId','label','type','required','orderNo','active'],
-  RoundPlan      : ['planId','dayType','roundNo','schedTime','graceEarlyMin','graceLateMin','active'],
+  RoundPlan      : ['planId','dayType','roundNo','schedTime','flexEndTime','graceEarlyMin','graceLateMin','active'],
   Holidays       : ['date','name','kind'],
   PushSubs       : ['userId','endpoint','p256dh','auth','device','createdAt','active'],
   Shifts         : ['shiftId','workDate','guardUserId','guardName','checkInAt','checkInLat','checkInLng',
                     'checkOutAt','checkOutLat','checkOutLng','status','note'],
-  Rounds         : ['roundId','workDate','dayType','roundNo','schedAt','openAt','closeAt',
+  Rounds         : ['roundId','workDate','dayType','roundNo','schedAt','openAt','closeAt','flex',
                     'guardUserId','shiftId','status','startedAt','finishedAt','pointsDone','pointsTotal'],
   Checkins       : ['checkinId','roundId','cpId','userId','userName','ts','clientTs','lat','lng',
                     'accuracyM','distanceM','verifyResult','overrideReason','ua'],
@@ -215,6 +215,23 @@ function workDateOf(d) {
   var x = new Date(d.getTime());
   if (parseInt(fmt(x, 'HH'), 10) < CFG.DAY_START_HOUR) x.setDate(x.getDate() - 1);
   return fmt(x, 'yyyy-MM-dd');
+}
+
+/** อ่านเวลา HH:mm จากค่าที่อาจเป็นข้อความหรือเป็น Date (Google Sheets ชอบแปลงให้เอง) */
+function parseHM(v) {
+  if (v instanceof Date) return { h: v.getHours(), m: v.getMinutes() };
+  var t = String(v == null ? '' : v).trim();
+  if (!t) return null;
+  if (t.indexOf('T') > 0) t = t.split('T')[1];
+  var h = parseInt(t.split(':')[0], 10), m = parseInt(t.split(':')[1] || '0', 10);
+  if (isNaN(h)) return null;
+  return { h: h, m: isNaN(m) ? 0 : m };
+}
+
+/** ประกอบวันที่ของ base เข้ากับเวลา h:m */
+function atTime(base, h, m) {
+  return new Date(fmt(base, 'yyyy-MM-dd') + 'T' +
+                  ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2) + ':00');
 }
 
 function dstr(v) { return (v instanceof Date) ? fmt(v, 'yyyy-MM-dd') : String(v).trim(); }
@@ -435,28 +452,31 @@ function generateRounds(workDate) {
 
   plans.forEach(function (p) {
     if (existing[String(p.roundNo)]) return;
-    var hh, mm;
-    if (p.schedTime instanceof Date) { hh = p.schedTime.getHours(); mm = p.schedTime.getMinutes(); }
-    else {
-      var t = String(p.schedTime);
-      if (t.indexOf('T') > 0) t = t.split('T')[1];
-      hh = parseInt(t.split(':')[0], 10);
-      mm = parseInt(t.split(':')[1] || '0', 10);
-    }
-    if (isNaN(hh)) return;
-    if (isNaN(mm)) mm = 0;
+    var st = parseHM(p.schedTime);
+    if (!st) return;
 
     var base = new Date(workDate + 'T12:00:00');
-    if (hh < CFG.DAY_START_HOUR) base.setDate(base.getDate() + 1);   // รอบดึกนับเป็นวันถัดไปตามปฏิทิน
-    var sched = new Date(fmt(base, 'yyyy-MM-dd') + 'T' +
-                         ('0' + hh).slice(-2) + ':' + ('0' + mm).slice(-2) + ':00');
+    if (st.h < CFG.DAY_START_HOUR) base.setDate(base.getDate() + 1);  // รอบดึกนับเป็นวันถัดไปตามปฏิทิน
+    var sched = atTime(base, st.h, st.m);
 
-    var open  = new Date(sched.getTime() - num(p.graceEarlyMin, 15) * 60000);
-    var close = new Date(sched.getTime() + num(p.graceLateMin, 60) * 60000);
+    var en = parseHM(p.flexEndTime);
+    var open, close, flex = '';
+    if (en) {
+      // รอบยืดหยุ่น: เดินเมื่อไหร่ก็ได้ภายในช่วง schedTime ถึง flexEndTime
+      flex = 'TRUE';
+      var eb = new Date(workDate + 'T12:00:00');
+      if (en.h <= CFG.DAY_START_HOUR) eb.setDate(eb.getDate() + 1);
+      var end = atTime(eb, en.h, en.m);
+      if (end.getTime() <= sched.getTime()) end = new Date(end.getTime() + 86400000);
+      open = sched; close = end;
+    } else {
+      open  = new Date(sched.getTime() - num(p.graceEarlyMin, 15) * 60000);
+      close = new Date(sched.getTime() + num(p.graceLateMin, 60) * 60000);
+    }
 
     appendRow('Rounds', {
       roundId: uid(), workDate: workDate, dayType: dayType, roundNo: num(p.roundNo),
-      schedAt: toIso(sched), openAt: toIso(open), closeAt: toIso(close),
+      schedAt: toIso(sched), openAt: toIso(open), closeAt: toIso(close), flex: flex,
       guardUserId: '', shiftId: '', status: 'PENDING',
       startedAt: '', finishedAt: '', pointsDone: 0, pointsTotal: cpTotal
     });
@@ -526,6 +546,18 @@ function remindRounds() {
       if (close.getTime() < now) return;
       var no = num(r.roundNo), hhmm = fmt(sched, 'HH:mm');
 
+      // รอบยืดหยุ่น: ไม่เตือนตามเวลานัด แต่เตือนเมื่อใกล้หมดช่วงแล้วยังไม่เริ่ม
+      if (bool(r.flex)) {
+        var leftMs = close.getTime() - now;
+        var warnMs = num(cfgGet('FLEX_REMIND_LEFT_MIN', 60), 60) * 60000;
+        if (leftMs <= warnMs && !already['ROUND_LATE|' + id]) {
+          if (notify('⚠️ รอบที่ ' + no + ' (ช่วงยืดหยุ่น ' + hhmm + '–' + fmt(close, 'HH:mm') + ' น.) ' +
+                     'เหลือเวลาอีก ' + Math.max(1, Math.round(leftMs / 60000)) + ' นาที ยังไม่มีการเช็คอิน',
+                     'HIGH', 'ROUND_LATE', id, 'GUARD')) sent++;
+        }
+        return;
+      }
+
       if (now >= sched.getTime() - before && now < sched.getTime() && !already['ROUND_REMIND|' + id]) {
         var mins = Math.max(1, Math.round((sched.getTime() - now) / 60000));
         if (notify('อีก ' + mins + ' นาที ถึงรอบที่ ' + no + ' (' + hhmm + ' น.) เตรียมออกเดินตรวจได้เลย',
@@ -575,6 +607,7 @@ function apiBootstrap(me) {
     .map(function (r) {
       return { roundId: String(r.roundId), roundNo: num(r.roundNo), status: String(r.status),
                schedAt: String(r.schedAt), openAt: String(r.openAt), closeAt: String(r.closeAt),
+               flex: bool(r.flex),
                pointsDone: num(r.pointsDone), pointsTotal: num(r.pointsTotal),
                guardUserId: String(r.guardUserId || '') };
     });
@@ -806,6 +839,7 @@ function apiSupervisorBoard(me, req) {
     rounds: rounds.map(function (r) {
       return { roundId: String(r.roundId), roundNo: num(r.roundNo), status: String(r.status),
                schedAt: String(r.schedAt), openAt: String(r.openAt), closeAt: String(r.closeAt),
+               flex: bool(r.flex),
                startedAt: String(r.startedAt || ''), finishedAt: String(r.finishedAt || ''),
                pointsDone: num(r.pointsDone), pointsTotal: num(r.pointsTotal) };
     }),
@@ -963,7 +997,9 @@ function apiMonthlyReport(me, req) {
     else if (st === 'MISSED')   { b.missed++;   q.missed++;   }
     if (r.startedAt) {
       b.started++;
-      if (parseIso(r.startedAt).getTime() - parseIso(r.schedAt).getTime() <= 15 * 60000) b.onTime++;
+      // รอบยืดหยุ่น: เดินภายในช่วงถือว่าตรงเวลา
+      if (bool(r.flex) ||
+          parseIso(r.startedAt).getTime() - parseIso(r.schedAt).getTime() <= 15 * 60000) b.onTime++;
     }
   });
 
@@ -998,7 +1034,8 @@ function apiMonthlyReport(me, req) {
   var partial  = rounds.filter(function (r) { return String(r.status) === 'PARTIAL'; }).length;
   var started  = rounds.filter(function (r) { return !!r.startedAt; });
   var onTime   = started.filter(function (r) {
-    return parseIso(r.startedAt).getTime() - parseIso(r.schedAt).getTime() <= 15 * 60000; }).length;
+    return bool(r.flex) ||
+           parseIso(r.startedAt).getTime() - parseIso(r.schedAt).getTime() <= 15 * 60000; }).length;
   var pts      = rounds.reduce(function (a, r) { return a + num(r.pointsDone); }, 0);
   var ptsTotal = rounds.reduce(function (a, r) { return a + num(r.pointsTotal); }, 0);
 
@@ -1143,6 +1180,7 @@ function apiSaveRoundPlan(me, req) {
   var rec = {
     planId: String(c.planId || uid()), dayType: String(c.dayType || 'WORKDAY'),
     roundNo: num(c.roundNo, 1), schedTime: String(c.schedTime || '18:00'),
+    flexEndTime: String(c.flexEndTime || ''),
     graceEarlyMin: num(c.graceEarlyMin, 15), graceLateMin: num(c.graceLateMin, 60),
     active: bool(c.active) ? 'TRUE' : 'FALSE'
   };
@@ -1361,6 +1399,7 @@ function apiNotifyTest(me, req) {
 function setupAll() {
   setupSheets();
   seedUsers();
+  migrateColumns();
   seedConfig();
   upgradeConfig();
   seedRoundPlan();
@@ -1415,6 +1454,7 @@ var CONFIG_DEFAULTS = [
   ['WEBEX_SUPERVISOR_EMAILS', '', 'อีเมล Webex ของหัวหน้าเวร คั่นด้วยจุลภาค'],
   ['REMIND_BEFORE_MIN', 10, 'เตือนล่วงหน้ากี่นาทีก่อนถึงเวลารอบ'],
   ['REMIND_LATE_MIN', 20, 'เลยเวลารอบกี่นาทีแล้วยังไม่เริ่ม ให้เตือนซ้ำ'],
+  ['FLEX_REMIND_LEFT_MIN', 60, 'รอบยืดหยุ่น: เหลือเวลาอีกกี่นาทีแล้วยังไม่เดิน ให้เตือน'],
 
   ['LINE_SUPERVISOR_TARGET', '', 'userId หรือ groupId ของหัวหน้าเวร (เฉพาะช่องทาง LINE)'],
   ['LINE_SUPERVISOR_MEMBERS', 1, 'จำนวนคนในกลุ่มนั้น (ใช้คำนวณโควตา LINE)'],
@@ -1427,6 +1467,30 @@ var CONFIG_DEFAULTS = [
 function seedConfig() {
   if (readTable('Config').length) return;
   CONFIG_DEFAULTS.forEach(function (r) { appendRow('Config', { key: r[0], value: r[1], note: r[2] }); });
+}
+
+/**
+ * เพิ่มคอลัมน์ใหม่ที่ SCHEMA มีแต่ในชีตยังไม่มี — รันซ้ำได้ ไม่ย้ายหรือลบคอลัมน์เดิม
+ * ใช้ตอนอัปเกรดโครงสร้างฐานข้อมูลของระบบที่ใช้งานอยู่แล้ว
+ */
+function migrateColumns() {
+  var added = [];
+  Object.keys(SCHEMA).forEach(function (tab) {
+    var sh = sheetOf(tab);
+    var w = Math.max(sh.getLastColumn(), 1);
+    var head = sh.getRange(1, 1, 1, w).getValues()[0].map(function (h) { return String(h).trim(); });
+    SCHEMA[tab].forEach(function (col) {
+      if (head.indexOf(col) >= 0) return;
+      var at = head.length + 1;
+      sh.getRange(1, at).setValue(col);
+      sh.getRange(1, at, sh.getMaxRows(), 1).setNumberFormat('@');
+      head.push(col);
+      added.push(tab + '.' + col);
+    });
+  });
+  SpreadsheetApp.flush();
+  Logger.log(added.length ? ('เพิ่มคอลัมน์: ' + added.join(', ')) : 'โครงสร้างครบแล้ว ไม่มีอะไรต้องเพิ่ม');
+  return added;
 }
 
 /** เพิ่มค่าระบบใหม่ให้ชีตที่ติดตั้งไปแล้ว — รันซ้ำได้ ไม่ทับค่าเดิม */
@@ -1444,15 +1508,18 @@ function upgradeConfig() {
 
 function seedRoundPlan() {
   if (readTable('RoundPlan').length) return;
-  var work = ['18:00','20:00','22:00','00:00','02:00','04:00'];
+  // สองรอบสุดท้ายของแต่ละประเภทวันเป็น "รอบยืดหยุ่น" — เดินเมื่อไหร่ก็ได้ในช่วง 00:00–06:00
+  var work = ['18:00','20:00','22:00','00:00','00:00','00:00'];
+  var workFlex = ['','','','','06:00','06:00'];
   work.forEach(function (t, i) {
     appendRow('RoundPlan', { planId: uid(), dayType: 'WORKDAY', roundNo: i + 1, schedTime: t,
-                             graceEarlyMin: 15, graceLateMin: 60, active: 'TRUE' });
+                             flexEndTime: workFlex[i], graceEarlyMin: 15, graceLateMin: 60, active: 'TRUE' });
   });
-  var holi = ['06:00','09:00','12:00','15:00','18:00','20:00','22:00','00:00','02:00','04:00'];
+  var holi = ['06:00','09:00','12:00','15:00','18:00','20:00','22:00','00:00','00:00','00:00'];
+  var holiFlex = ['','','','','','','','','06:00','06:00'];
   holi.forEach(function (t, i) {
     appendRow('RoundPlan', { planId: uid(), dayType: 'HOLIDAY', roundNo: i + 1, schedTime: t,
-                             graceEarlyMin: 15, graceLateMin: 60, active: 'TRUE' });
+                             flexEndTime: holiFlex[i], graceEarlyMin: 15, graceLateMin: 60, active: 'TRUE' });
   });
 }
 
@@ -1504,14 +1571,22 @@ function setupTriggers() {
 /** ซ่อมข้อมูลที่ Sheets แปลงชนิดไปแล้ว แล้วสร้างรอบใหม่ */
 function fixAndRebuild() {
   setupSheets();
+  migrateColumns();
   var rp = sheetOf('RoundPlan');
   if (rp.getLastRow() > 1) {
-    var vals = rp.getRange(2, 4, rp.getLastRow() - 1, 1).getValues();
-    var out = vals.map(function (v) {
-      var x = v[0];
-      return [(x instanceof Date) ? Utilities.formatDate(x, CFG.TZ, 'HH:mm') : String(x)];
+    var head = rp.getRange(1, 1, 1, rp.getLastColumn()).getValues()[0]
+                 .map(function (h) { return String(h).trim(); });
+    ['schedTime', 'flexEndTime'].forEach(function (col) {
+      var c = head.indexOf(col) + 1;
+      if (!c) return;
+      var vals = rp.getRange(2, c, rp.getLastRow() - 1, 1).getValues();
+      var out = vals.map(function (v) {
+        var x = v[0];
+        if (x === '' || x === null) return [''];
+        return [(x instanceof Date) ? Utilities.formatDate(x, CFG.TZ, 'HH:mm') : String(x)];
+      });
+      rp.getRange(2, c, out.length, 1).setNumberFormat('@').setValues(out);
     });
-    rp.getRange(2, 4, out.length, 1).setNumberFormat('@').setValues(out);
   }
   var sh = sheetOf('Rounds');
   if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
@@ -1545,6 +1620,24 @@ function setNotifyChannel(v) {
   }
   Logger.log('ไม่พบค่าระบบ NOTIFY_CHANNEL — รัน upgradeConfig() ก่อน');
   return '';
+}
+
+/**
+ * ตั้งสองรอบสุดท้ายของแต่ละประเภทวันให้เป็น "รอบยืดหยุ่น" ช่วง 00:00–06:00
+ * วันทำการ = รอบ 5,6 · วันหยุด = รอบ 9,10 — รันซ้ำได้
+ */
+function setFlexRounds() {
+  var target = { 'WORKDAY': [5, 6], 'HOLIDAY': [9, 10] };
+  var n = 0;
+  readTable('RoundPlan').forEach(function (p) {
+    var list = target[String(p.dayType)] || [];
+    if (list.indexOf(num(p.roundNo)) < 0) return;
+    updateRow('RoundPlan', p._row, { schedTime: '00:00', flexEndTime: '06:00' });
+    n++;
+  });
+  SpreadsheetApp.flush();
+  Logger.log('ตั้งรอบยืดหยุ่นแล้ว ' + n + ' รอบ — รัน fixAndRebuild() ต่อเพื่อสร้างรอบใหม่');
+  return n;
 }
 
 /** ใส่โทเคนบอต Webex (รันจาก Editor ครั้งเดียว แล้วลบโทเคนออกจากโค้ด) */
