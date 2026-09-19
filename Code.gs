@@ -273,7 +273,9 @@ function secret() {
 }
 
 function signToken(payload) {
-  var body = Utilities.base64EncodeWebSafe(JSON.stringify(payload));
+  // ต้องเข้ารหัสเป็น UTF-8 ให้ชัดเจน ไม่งั้นชื่อภาษาไทยในโทเคนจะกลายเป็น ???
+  var body = Utilities.base64EncodeWebSafe(
+               Utilities.newBlob(JSON.stringify(payload)).getBytes());
   var sig  = Utilities.base64EncodeWebSafe(
                Utilities.computeHmacSha256Signature(body, secret()));
   return body + '.' + sig;
@@ -582,7 +584,7 @@ function apiShiftIn(me, req) {
   var workDate = workDateOf(new Date());
   var rows = readTable('Shifts');
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i].guardUserId) === me.userId && String(rows[i].workDate) === workDate && !rows[i].checkOutAt)
+    if (String(rows[i].guardUserId) === me.userId && dstr(rows[i].workDate) === workDate && !rows[i].checkOutAt)
       return ok({ shiftId: String(rows[i].shiftId), already: true });
   }
   var id = uid();
