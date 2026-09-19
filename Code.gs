@@ -230,6 +230,28 @@ function isHoliday(dateStr) {
   return dow === 0 || dow === 6;
 }
 
+/**
+ * ตรวจระยะห่างจากจุดลงเวลาเข้า-ออกเวร
+ * คืน null ถ้าแอดมินยังไม่ได้ตั้งจุด (ระบบจะไม่บังคับอะไรเลย)
+ */
+function shiftPointCheck(lat, lng) {
+  var la = num(cfgGet('SHIFT_LAT', 0)), ln = num(cfgGet('SHIFT_LNG', 0));
+  if (!la || !ln) return null;
+  var rad = num(cfgGet('SHIFT_RADIUS_M', 20), 20);
+  if (!lat || !lng) return { dist: -1, radiusM: rad, inside: false };
+  var d = Math.round(haversine(lat, lng, la, ln));
+  return { dist: d, radiusM: rad, inside: d <= rad };
+}
+
+/** ข้อความบันทึกระยะและเหตุผลยืนยันเองลงคอลัมน์ note ของแท็บ Shifts */
+function shiftNote(phase, chk, req) {
+  var parts = [];
+  if (req.note) parts.push(String(req.note));
+  if (chk) parts.push(phase + ' ห่างจุดลงเวลา ' + (chk.dist < 0 ? 'ไม่ทราบพิกัด' : chk.dist + ' ม.'));
+  if (req.overrideReason) parts.push('ยืนยันเอง: ' + String(req.overrideReason));
+  return parts.join(' · ');
+}
+
 function monthOf(workDate) { return String(workDate).substring(0, 7); }
 
 function isLocked(month) { return String(cfgGet('LOCK_' + month, '')).toUpperCase() === 'TRUE'; }
@@ -574,6 +596,10 @@ function apiBootstrap(me) {
     workDate: workDate, dayType: isHoliday(workDate) ? 'HOLIDAY' : 'WORKDAY',
     serverTime: nowIso(), checkpoints: cps, checklist: items,
     remindBeforeMin: num(cfgGet('REMIND_BEFORE_MIN', 10), 10),
+    shiftPoint: (function () {
+      var la = num(cfgGet('SHIFT_LAT', 0)), ln = num(cfgGet('SHIFT_LNG', 0));
+      return (la && ln) ? { lat: la, lng: ln, radiusM: num(cfgGet('SHIFT_RADIUS_M', 20), 20) } : null;
+    })(),
     rounds: rounds, done: doneMap, shift: shift,
     categories: String(cfgGet('INCIDENT_CATEGORIES',
       'บุคคลต้องสงสัย,ประตู/รั้วผิดปกติ,ไฟฟ้า/แสงสว่าง,น้ำรั่ว/ท่วม,ไฟไหม้/ควัน,ทรัพย์สินเสียหาย,สัตว์,อื่น ๆ')).split(',')
@@ -587,14 +613,20 @@ function apiShiftIn(me, req) {
     if (String(rows[i].guardUserId) === me.userId && dstr(rows[i].workDate) === workDate && !rows[i].checkOutAt)
       return ok({ shiftId: String(rows[i].shiftId), already: true });
   }
+  var chk = shiftPointCheck(num(req.lat), num(req.lng));
+  if (chk && !chk.inside && !req.overrideReason)
+    return err('อยู่นอกจุดลงเวลา ' + (chk.dist < 0 ? '(อ่านพิกัดไม่ได้)' : chk.dist + ' ม.') +
+               ' — รัศมีที่กำหนด ' + chk.radiusM + ' ม.');
+
   var id = uid();
   appendRow('Shifts', {
     shiftId: id, workDate: workDate, guardUserId: me.userId, guardName: me.name,
     checkInAt: nowIso(), checkInLat: num(req.lat), checkInLng: num(req.lng),
-    checkOutAt: '', checkOutLat: '', checkOutLng: '', status: 'OPEN', note: String(req.note || '')
+    checkOutAt: '', checkOutLat: '', checkOutLng: '', status: 'OPEN',
+    note: shiftNote('เข้าเวร', chk, req)
   });
-  audit(me.userId, 'SHIFT_IN', 'SHIFT', id);
-  return ok({ shiftId: id });
+  audit(me.userId, 'SHIFT_IN', 'SHIFT', id, null, chk);
+  return ok({ shiftId: id, distanceM: chk ? chk.dist : -1 });
 }
 
 function apiShiftOut(me, req) {
@@ -602,11 +634,18 @@ function apiShiftOut(me, req) {
   for (var i = 0; i < rows.length; i++) {
     var s = rows[i];
     if (String(s.guardUserId) === me.userId && !s.checkOutAt) {
+      var chk = shiftPointCheck(num(req.lat), num(req.lng));
+      if (chk && !chk.inside && !req.overrideReason)
+        return err('อยู่นอกจุดลงเวลา ' + (chk.dist < 0 ? '(อ่านพิกัดไม่ได้)' : chk.dist + ' ม.') +
+                   ' — รัศมีที่กำหนด ' + chk.radiusM + ' ม.');
+
+      var old = String(s.note || ''), add = shiftNote('ออกเวร', chk, req);
       updateRow('Shifts', s._row, {
-        checkOutAt: nowIso(), checkOutLat: num(req.lat), checkOutLng: num(req.lng), status: 'CLOSED'
+        checkOutAt: nowIso(), checkOutLat: num(req.lat), checkOutLng: num(req.lng), status: 'CLOSED',
+        note: (old && add) ? (old + ' | ' + add) : (old || add)
       });
-      audit(me.userId, 'SHIFT_OUT', 'SHIFT', String(s.shiftId));
-      return ok({ shiftId: String(s.shiftId) });
+      audit(me.userId, 'SHIFT_OUT', 'SHIFT', String(s.shiftId), null, chk);
+      return ok({ shiftId: String(s.shiftId), distanceM: chk ? chk.dist : -1 });
     }
   }
   return err('ไม่พบเวรที่เปิดอยู่');
@@ -1364,6 +1403,10 @@ var CONFIG_DEFAULTS = [
   ['MAX_ACCURACY_M', 30, 'ความคลาดเคลื่อน GPS สูงสุดที่ถือว่าเชื่อถือได้ (เมตร)'],
   ['MIN_SECONDS_BETWEEN_POINTS', 20, 'เช็คอินสองจุดห่างกันน้อยกว่านี้ถือว่าผิดปกติ'],
   ['MAX_WALK_SPEED_MPS', 5, 'ความเร็วระหว่างจุดที่ถือว่าผิดมนุษย์ (เมตร/วินาที)'],
+
+  ['SHIFT_LAT', '', 'ละติจูดของจุดลงเวลาเข้า-ออกเวร (ตั้งจากหน้าแอดมิน)'],
+  ['SHIFT_LNG', '', 'ลองจิจูดของจุดลงเวลาเข้า-ออกเวร'],
+  ['SHIFT_RADIUS_M', 20, 'รัศมีที่ยอมให้ลงเวลาเข้า-ออกเวรได้ (เมตร)'],
 
   ['NOTIFY_CHANNEL', 'WEBEX', 'ช่องทางแจ้งเตือน: WEBEX (ฟรี ไม่จำกัด) · LINE · BOTH · OFF'],
   ['WEBEX_GUARD_ROOM', '', 'roomId ของสเปซ Webex ที่ รปภ. อยู่ (เตือนก่อนถึงรอบ)'],
