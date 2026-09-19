@@ -232,7 +232,7 @@ function drawKpis(){
     tile(s.pctPoints+'%','ครบจุด ('+s.points+'/'+s.pointsTotal+')',cls(s.pctPoints,98,90))+
     tile(s.missed+' / '+s.partial,'ขาด / ไม่ครบจุด',(s.missed+s.partial)===0?'ok':'bad')+
     tile(s.incidents,'เหตุการณ์ที่แจ้ง',s.incidentsOpen?'warn':'ok')+
-    tile(s.photos,'รูปหลักฐานที่บันทึก');
+    tile(s.photos,'รูปแนบจากการแจ้งเหตุ');
 }
 
 function drawDate(){
