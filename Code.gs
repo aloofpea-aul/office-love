@@ -107,6 +107,7 @@ function _route(req) {
       case 'saveConfig'      : return apiSaveConfig(auth(req, ['ADMIN']), req);
       case 'uploadRefPhoto'  : return apiUploadRefPhoto(auth(req, ['ADMIN']), req);
       case 'lockMonth'       : return apiLockMonth(auth(req, ['ADMIN']), req);
+      case 'notifyTest'      : return apiNotifyTest(auth(req, ['ADMIN']), req);
 
       default: return err('ไม่รู้จักคำสั่ง: ' + action);
     }
@@ -473,6 +474,49 @@ function tickRounds() {
   } finally { lock.releaseLock(); }
 }
 
+/**
+ * เตือนก่อนถึงรอบ และเตือนซ้ำเมื่อเลยเวลามาแล้วยังไม่มีใครเริ่ม
+ * ตั้งเป็น trigger ทุก 5 นาที — กันส่งซ้ำด้วยประวัติในแท็บ Notifications
+ */
+function remindRounds() {
+  if (String(cfgGet('NOTIFY_CHANNEL', 'WEBEX')).toUpperCase() === 'OFF') return 0;
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return 0;
+  try {
+    var now    = new Date().getTime();
+    var before = num(cfgGet('REMIND_BEFORE_MIN', 10), 10) * 60000;
+    var lateAf = num(cfgGet('REMIND_LATE_MIN', 20), 20) * 60000;
+
+    var already = {};
+    readTable('Notifications').forEach(function (n) {
+      var t = String(n.type);
+      if (t === 'ROUND_REMIND' || t === 'ROUND_LATE') already[t + '|' + String(n.refId)] = true;
+    });
+
+    var sent = 0;
+    readTable('Rounds').forEach(function (r) {
+      if (String(r.status) !== 'PENDING' || r.startedAt) return;
+      var id    = String(r.roundId);
+      var sched = parseIso(r.schedAt);
+      var close = parseIso(r.closeAt);
+      if (close.getTime() < now) return;
+      var no = num(r.roundNo), hhmm = fmt(sched, 'HH:mm');
+
+      if (now >= sched.getTime() - before && now < sched.getTime() && !already['ROUND_REMIND|' + id]) {
+        var mins = Math.max(1, Math.round((sched.getTime() - now) / 60000));
+        if (notify('อีก ' + mins + ' นาที ถึงรอบที่ ' + no + ' (' + hhmm + ' น.) เตรียมออกเดินตรวจได้เลย',
+                   'MED', 'ROUND_REMIND', id, 'GUARD')) sent++;
+      } else if (now >= sched.getTime() + lateAf && !already['ROUND_LATE|' + id]) {
+        var late = Math.round((now - sched.getTime()) / 60000);
+        if (notify('⚠️ เลยเวลารอบที่ ' + no + ' (' + hhmm + ' น.) มาแล้ว ' + late +
+                   ' นาที ยังไม่มีการเช็คอิน — ปิดรอบ ' + fmt(close, 'HH:mm') + ' น.',
+                   'HIGH', 'ROUND_LATE', id, 'GUARD')) sent++;
+      }
+    });
+    return sent;
+  } finally { lock.releaseLock(); }
+}
+
 // ===========================================================================
 // API — ฝั่ง รปภ.
 // ===========================================================================
@@ -527,6 +571,7 @@ function apiBootstrap(me) {
     user: { userId: me.userId, name: me.name, role: me.role },
     workDate: workDate, dayType: isHoliday(workDate) ? 'HOLIDAY' : 'WORKDAY',
     serverTime: nowIso(), checkpoints: cps, checklist: items,
+    remindBeforeMin: num(cfgGet('REMIND_BEFORE_MIN', 10), 10),
     rounds: rounds, done: doneMap, shift: shift,
     categories: String(cfgGet('INCIDENT_CATEGORIES',
       'บุคคลต้องสงสัย,ประตู/รั้วผิดปกติ,ไฟฟ้า/แสงสว่าง,น้ำรั่ว/ท่วม,ไฟไหม้/ควัน,ทรัพย์สินเสียหาย,สัตว์,อื่น ๆ')).split(',')
@@ -1182,11 +1227,91 @@ function sendLine(target, text, severity, type, refId, recipients) {
   }
 }
 
+/**
+ * ส่งข้อความผ่านบอต Webex — ฟรี ไม่มีโควตารายเดือนแบบ LINE
+ * target เป็น roomId ของสเปซ หรืออีเมลของผู้รับก็ได้
+ */
+function sendWebex(target, text, type, refId) {
+  var token = prop('WEBEX_TOKEN');
+  if (!token || !target) return false;
+  var t = String(target).trim();
+  var payload = { markdown: text };
+  if (t.indexOf('@') > 0) payload.toPersonEmail = t; else payload.roomId = t;
+  try {
+    var res = UrlFetchApp.fetch('https://webexapis.com/v1/messages', {
+      method: 'post', contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload), muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    var st = (code >= 200 && code < 300) ? 'SENT' : (code === 429 ? 'RATE_LIMITED' : 'ERROR ' + code);
+    appendRow('Notifications', { notifId: uid(), ts: nowIso(), channel: 'WEBEX', target: t,
+      recipients: (st === 'SENT' ? 1 : 0), type: type || '', refId: refId || '', status: st });
+    return st === 'SENT';
+  } catch (e) {
+    appendRow('Notifications', { notifId: uid(), ts: nowIso(), channel: 'WEBEX', target: t,
+      recipients: 0, type: type || '', refId: refId || '', status: 'ERROR' });
+    return false;
+  }
+}
+
+/** ปลายทาง Webex ของกลุ่มผู้รับ — สเปซก่อน แล้วตามด้วยอีเมลรายคน */
+function webexTargets(audience) {
+  var sup  = (audience === 'SUPERVISOR');
+  var room = String(cfgGet(sup ? 'WEBEX_SUPERVISOR_ROOM' : 'WEBEX_GUARD_ROOM', '')).trim();
+  if (!room) room = String(cfgGet('WEBEX_GUARD_ROOM', '')).trim();
+  var mails = String(cfgGet(sup ? 'WEBEX_SUPERVISOR_EMAILS' : 'WEBEX_GUARD_EMAILS', ''))
+    .split(',').map(function (x) { return x.trim(); }).filter(function (x) { return x; });
+  return (room ? [room] : []).concat(mails);
+}
+
+/**
+ * ศูนย์กลางการแจ้งเตือน — เลือกช่องทางจากค่าระบบ NOTIFY_CHANNEL
+ * WEBEX (ค่าตั้งต้น) · LINE · BOTH · OFF
+ * audience: 'GUARD' (รปภ.) หรือ 'SUPERVISOR' (หัวหน้าเวร)
+ */
+function notify(text, severity, type, refId, audience) {
+  var ch = String(cfgGet('NOTIFY_CHANNEL', 'WEBEX')).toUpperCase();
+  if (ch === 'OFF') return false;
+  var sup = (audience === 'SUPERVISOR');
+  var sent = false;
+
+  if (ch === 'WEBEX' || ch === 'BOTH') {
+    webexTargets(audience).forEach(function (t) {
+      if (sendWebex(t, '**Office Love** — ' + text, type, refId)) sent = true;
+    });
+  }
+  if (ch === 'LINE' || ch === 'BOTH') {
+    var target = String(cfgGet(sup ? 'LINE_SUPERVISOR_TARGET' : 'LINE_GUARD_TARGET', ''));
+    if (!target) target = String(cfgGet('LINE_SUPERVISOR_TARGET', ''));
+    var count = num(cfgGet(sup ? 'LINE_SUPERVISOR_MEMBERS' : 'LINE_GUARD_MEMBERS', 1), 1);
+    if (target && sendLine(target, '[Office Love] ' + text, severity || 'MED', type || '', refId || '', count))
+      sent = true;
+  }
+  return sent;
+}
+
 function notifySupervisor(text, severity) {
-  var target = String(cfgGet('LINE_SUPERVISOR_TARGET', ''));
-  var count  = num(cfgGet('LINE_SUPERVISOR_MEMBERS', 1), 1);
-  if (!target) return;
-  sendLine(target, '[Office Love] ' + text, severity || 'MED', 'SUPERVISOR', '', count);
+  return notify(text, severity || 'MED', 'SUPERVISOR', '', 'SUPERVISOR');
+}
+
+/** ปุ่มทดสอบส่งแจ้งเตือนจากหน้าแอดมิน */
+function apiNotifyTest(me, req) {
+  var aud = (String(req.audience || 'GUARD').toUpperCase() === 'SUPERVISOR') ? 'SUPERVISOR' : 'GUARD';
+  var ch  = String(cfgGet('NOTIFY_CHANNEL', 'WEBEX')).toUpperCase();
+  var tg  = webexTargets(aud);
+  var sent = notify(String(req.text || 'ทดสอบการแจ้งเตือน — ข้อความนี้ส่งจากระบบ Office Love'),
+                    'MED', 'TEST', '', aud);
+  audit(me.userId, 'NOTIFY_TEST', 'NOTIFY', aud, null, { channel: ch, sent: sent });
+  if (!sent) {
+    if (ch === 'OFF') return err('ค่าระบบ NOTIFY_CHANNEL ตั้งเป็น OFF อยู่');
+    if ((ch === 'WEBEX' || ch === 'BOTH') && !tg.length)
+      return err('ยังไม่ได้ตั้ง WEBEX_GUARD_ROOM หรือ WEBEX_GUARD_EMAILS');
+    if ((ch === 'WEBEX' || ch === 'BOTH') && !prop('WEBEX_TOKEN'))
+      return err('ยังไม่ได้ใส่โทเคนบอต Webex — รัน setWebexToken() ใน Apps Script หนึ่งครั้ง');
+    return err('ส่งไม่สำเร็จ — ดูรายละเอียดในแท็บ Notifications');
+  }
+  return ok({ channel: ch, audience: aud, webexTargets: tg.length });
 }
 
 // ===========================================================================
@@ -1196,6 +1321,7 @@ function setupAll() {
   setupSheets();
   seedUsers();
   seedConfig();
+  upgradeConfig();
   seedRoundPlan();
   seedCheckpoints();
   seedChecklist();
@@ -1232,15 +1358,43 @@ function seedUsers() {
   }
 }
 
+var CONFIG_DEFAULTS = [
+  ['MAX_ACCURACY_M', 30, 'ความคลาดเคลื่อน GPS สูงสุดที่ถือว่าเชื่อถือได้ (เมตร)'],
+  ['MIN_SECONDS_BETWEEN_POINTS', 20, 'เช็คอินสองจุดห่างกันน้อยกว่านี้ถือว่าผิดปกติ'],
+  ['MAX_WALK_SPEED_MPS', 5, 'ความเร็วระหว่างจุดที่ถือว่าผิดมนุษย์ (เมตร/วินาที)'],
+
+  ['NOTIFY_CHANNEL', 'WEBEX', 'ช่องทางแจ้งเตือน: WEBEX (ฟรี ไม่จำกัด) · LINE · BOTH · OFF'],
+  ['WEBEX_GUARD_ROOM', '', 'roomId ของสเปซ Webex ที่ รปภ. อยู่ (เตือนก่อนถึงรอบ)'],
+  ['WEBEX_GUARD_EMAILS', '', 'อีเมล Webex ของ รปภ. รายคน คั่นด้วยจุลภาค (ใช้แทนหรือเสริมสเปซ)'],
+  ['WEBEX_SUPERVISOR_ROOM', '', 'roomId ของสเปซหัวหน้าเวร (ว่างไว้ = ใช้สเปซเดียวกับ รปภ.)'],
+  ['WEBEX_SUPERVISOR_EMAILS', '', 'อีเมล Webex ของหัวหน้าเวร คั่นด้วยจุลภาค'],
+  ['REMIND_BEFORE_MIN', 10, 'เตือนล่วงหน้ากี่นาทีก่อนถึงเวลารอบ'],
+  ['REMIND_LATE_MIN', 20, 'เลยเวลารอบกี่นาทีแล้วยังไม่เริ่ม ให้เตือนซ้ำ'],
+
+  ['LINE_SUPERVISOR_TARGET', '', 'userId หรือ groupId ของหัวหน้าเวร (เฉพาะช่องทาง LINE)'],
+  ['LINE_SUPERVISOR_MEMBERS', 1, 'จำนวนคนในกลุ่มนั้น (ใช้คำนวณโควตา LINE)'],
+  ['LINE_GUARD_TARGET', '', 'userId หรือ groupId ของ รปภ. (เฉพาะช่องทาง LINE)'],
+  ['LINE_GUARD_MEMBERS', 1, 'จำนวนคนในกลุ่ม รปภ. (ใช้คำนวณโควตา LINE)'],
+
+  ['INCIDENT_CATEGORIES', 'บุคคลต้องสงสัย,ประตู/รั้วผิดปกติ,ไฟฟ้า/แสงสว่าง,น้ำรั่ว/ท่วม,ไฟไหม้/ควัน,ทรัพย์สินเสียหาย,สัตว์,อื่น ๆ', 'หมวดแจ้งเหตุ']
+];
+
 function seedConfig() {
   if (readTable('Config').length) return;
-  [['MAX_ACCURACY_M', 30, 'ความคลาดเคลื่อน GPS สูงสุดที่ถือว่าเชื่อถือได้ (เมตร)'],
-   ['MIN_SECONDS_BETWEEN_POINTS', 20, 'เช็คอินสองจุดห่างกันน้อยกว่านี้ถือว่าผิดปกติ'],
-   ['MAX_WALK_SPEED_MPS', 5, 'ความเร็วระหว่างจุดที่ถือว่าผิดมนุษย์ (เมตร/วินาที)'],
-   ['LINE_SUPERVISOR_TARGET', '', 'userId หรือ groupId ของผู้รับแจ้งเตือน'],
-   ['LINE_SUPERVISOR_MEMBERS', 1, 'จำนวนคนในกลุ่มนั้น (ใช้คำนวณโควตา)'],
-   ['INCIDENT_CATEGORIES', 'บุคคลต้องสงสัย,ประตู/รั้วผิดปกติ,ไฟฟ้า/แสงสว่าง,น้ำรั่ว/ท่วม,ไฟไหม้/ควัน,ทรัพย์สินเสียหาย,สัตว์,อื่น ๆ', 'หมวดแจ้งเหตุ']
-  ].forEach(function (r) { appendRow('Config', { key: r[0], value: r[1], note: r[2] }); });
+  CONFIG_DEFAULTS.forEach(function (r) { appendRow('Config', { key: r[0], value: r[1], note: r[2] }); });
+}
+
+/** เพิ่มค่าระบบใหม่ให้ชีตที่ติดตั้งไปแล้ว — รันซ้ำได้ ไม่ทับค่าเดิม */
+function upgradeConfig() {
+  var have = {};
+  readTable('Config').forEach(function (c) { have[String(c.key)] = true; });
+  var added = 0;
+  CONFIG_DEFAULTS.forEach(function (r) {
+    if (have[r[0]]) return;
+    appendRow('Config', { key: r[0], value: r[1], note: r[2] });
+    added++;
+  });
+  return added;
 }
 
 function seedRoundPlan() {
@@ -1293,11 +1447,13 @@ function seedChecklist() {
 function setupTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var f = t.getHandlerFunction();
-    if (f === 'dailyGenerateRounds' || f === 'tickRounds') ScriptApp.deleteTrigger(t);
+    if (f === 'dailyGenerateRounds' || f === 'tickRounds' || f === 'remindRounds')
+      ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('dailyGenerateRounds').timeBased().atHour(5).everyDays(1)
            .inTimezone(CFG.TZ).create();
   ScriptApp.newTrigger('tickRounds').timeBased().everyMinutes(15).create();
+  ScriptApp.newTrigger('remindRounds').timeBased().everyMinutes(5).create();
 }
 
 /** ซ่อมข้อมูลที่ Sheets แปลงชนิดไปแล้ว แล้วสร้างรอบใหม่ */
@@ -1322,4 +1478,23 @@ function fixAndRebuild() {
 /** ใส่โทเคน LINE (รันจาก Editor ครั้งเดียว อย่าเก็บโทเคนไว้ในโค้ด) */
 function setLineToken() {
   PropertiesService.getScriptProperties().setProperty('LINE_TOKEN', 'ใส่ channel access token ที่นี่');
+}
+
+/** ใส่โทเคนบอต Webex (รันจาก Editor ครั้งเดียว แล้วลบโทเคนออกจากโค้ด) */
+function setWebexToken() {
+  PropertiesService.getScriptProperties().setProperty('WEBEX_TOKEN', 'ใส่ bot access token ที่นี่');
+}
+
+/** เรียกดูสเปซ Webex ทั้งหมดที่บอตถูกเชิญเข้าไป — ใช้หา roomId มาใส่ค่าระบบ */
+function listWebexRooms() {
+  var token = prop('WEBEX_TOKEN');
+  if (!token) return 'ยังไม่ได้ใส่โทเคน — รัน setWebexToken() ก่อน';
+  var res = UrlFetchApp.fetch('https://webexapis.com/v1/rooms?max=50', {
+    headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  var out = (JSON.parse(res.getContentText()).items || []).map(function (r) {
+    return r.title + '  →  ' + r.id;
+  }).join('\n');
+  Logger.log(out || 'บอตยังไม่ได้อยู่ในสเปซไหนเลย');
+  return out;
 }
