@@ -186,11 +186,10 @@ a{color:var(--pri2)}
       <div id="clList"></div>
     </div>
 
-    <div class="card" id="photoCard">
-      <div class="row between"><h3 style="margin:0">รูปถ่าย</h3><span class="pill" id="photoReq"></span></div>
+    <div class="card hide" id="photoCard">
+      <div class="row between"><h3 style="margin:0">ส่องกล้องเล็งมุม</h3><span class="pill" id="photoReq"></span></div>
       <p class="muted" id="photoHint" style="margin:6px 0 0"></p>
       <div id="camArea" style="margin-top:12px"></div>
-      <div class="thumbs" id="thumbs"></div>
     </div>
 
     <button id="btnSaveCheckin">บันทึกเช็คอิน</button>
@@ -427,6 +426,22 @@ function loadHome(){
   });
 }
 
+/* ตรวจว่ายืนอยู่ในจุดลงเวลาเข้า-ออกเวรไหม
+   คืน body สำหรับส่ง API · คืน null เมื่อผู้ใช้ยกเลิกตอนถูกถามเหตุผล */
+function shiftBody(p, phase){
+  var b = p ? { lat:p.coords.latitude, lng:p.coords.longitude } : {};
+  var sp = S.boot && S.boot.shiftPoint;
+  if(!sp) return b;                                   // แอดมินยังไม่ได้ตั้งจุด = ไม่บังคับ
+  var d = p ? distM(p.coords.latitude, p.coords.longitude, sp.lat, sp.lng) : -1;
+  if(d>=0 && d<=sp.radiusM) return b;
+  var why = prompt('อยู่นอกจุดลงเวลา '+(d<0?'(อ่านพิกัดไม่ได้)':d+' ม.')+
+                   ' · รัศมีที่กำหนด '+sp.radiusM+' ม.\n'+
+                   'ใส่เหตุผลเพื่อ'+phase+'แบบยืนยันเอง (ระบบจะบันทึกไว้ให้หัวหน้าเวรดู):');
+  if(!why) return null;
+  b.overrideReason = why;
+  return b;
+}
+
 function paintShift(){
   var b=$('shiftBox');
   if(S.boot.shift){
@@ -438,9 +453,11 @@ function paintShift(){
       if(!confirm('ยืนยันออกเวร?')) return;
       var btn=this; btn.disabled=true;
       getPos().catch(function(){ return null; }).then(function(p){
-        return api('shiftOut', p?{lat:p.coords.latitude,lng:p.coords.longitude}:{});
-      }).then(function(){ toast('ออกเวรเรียบร้อย'); return loadHome(); })
-        .catch(function(e){ toast(e.message); btn.disabled=false; });
+        var b=shiftBody(p,'ออกเวร');
+        if(!b){ btn.disabled=false; return null; }
+        return api('shiftOut', b);
+      }).then(function(r){ if(!r) return; toast('ออกเวรเรียบร้อย'); return loadHome(); })
+        .catch(function(e){ toast(e.message,4000); btn.disabled=false; });
     };
   }else{
     b.innerHTML='<p class="muted" style="margin:0 0 12px">ยังไม่ได้ลงเวลาเข้าเวร — กดปุ่มด้านล่างก่อนเริ่มเดินตรวจ</p>'+
@@ -448,9 +465,11 @@ function paintShift(){
     $('btnIn').onclick=function(){
       var btn=this; btn.disabled=true; toast('กำลังอ่านพิกัด…');
       getPos().catch(function(){ return null; }).then(function(p){
-        return api('shiftIn', p?{lat:p.coords.latitude,lng:p.coords.longitude}:{});
-      }).then(function(){ toast('เข้าเวรเรียบร้อย'); return loadHome(); })
-        .catch(function(e){ toast(e.message); btn.disabled=false; });
+        var b=shiftBody(p,'เข้าเวร');
+        if(!b){ btn.disabled=false; return null; }
+        return api('shiftIn', b);
+      }).then(function(r){ if(!r) return; toast('เข้าเวรเรียบร้อย'); return loadHome(); })
+        .catch(function(e){ toast(e.message,4000); btn.disabled=false; });
     };
   }
 }
@@ -597,11 +616,14 @@ function paintCps(){
 function openCheck(cp){
   S.cp=cp; S.photos=[];
   $('cpTitle').textContent=cp.code+' · '+cp.name;
-  $('photoReq').textContent=cp.requirePhoto?'บังคับ':'ไม่บังคับ';
-  $('photoReq').className='pill '+(cp.requirePhoto?'warn':'');
+  var useCam = !!cp.requirePhoto;
+  $('photoCard').classList.toggle('hide', !useCam);
+  $('photoReq').textContent = cp.photoHeading!=null ? 'บังคับทิศ' : 'ดูมุมอย่างเดียว';
+  $('photoReq').className = 'pill '+(cp.photoHeading!=null?'warn':'');
   $('photoHint').textContent=cp.photoHint||'';
-  $('thumbs').innerHTML='';
-  paintChecklist(); buildCam(); show('scCheck'); refreshGps();
+  paintChecklist();
+  if(useCam) buildCam(); else stopCam();
+  show('scCheck'); refreshGps();
 }
 
 function refreshGps(){
@@ -633,7 +655,7 @@ function refreshGps(){
   }).catch(function(e){
     $('gpsDist').textContent='อ่านพิกัดไม่ได้';
     $('gpsBanner').innerHTML='<div class="banner bad">'+e.message+
-      ' — บันทึกได้แต่ต้องถ่ายรูปและใส่เหตุผล</div>';
+      ' — บันทึกได้แต่ต้องใส่เหตุผล</div>';
   });
 }
 $('btnGpsAgain').onclick=refreshGps;
@@ -682,19 +704,9 @@ function buildCam(){
       (cp.refPhotoUrl?'<img class="ghost" src="'+cp.refPhotoUrl+'" alt="">':'')+
       '<div class="compass" id="cmp">เข็มทิศ: ยังไม่ได้เปิด</div>'+
     '</div>'+
-    '<div style="height:10px"></div>'+
-    '<button id="btnShot">📸 ถ่ายรูป</button>'+
-    '<div style="height:8px"></div>'+
-    '<label style="margin:0">หรือใช้กล้องของเครื่อง</label>'+
-    '<input id="filePhoto" type="file" accept="image/*" capture="environment">';
+    '<p class="muted" style="margin:10px 0 0">ส่องกล้องเทียบภาพตัวอย่างให้ได้มุมใกล้เคียง '+
+      'แล้วกดบันทึกเช็คอินได้เลย — ระบบไม่เก็บรูปจากหน้านี้</p>';
   area.appendChild(live);
-
-  $('filePhoto').onchange=function(e){
-    Array.prototype.forEach.call(e.target.files, function(f){
-      shrink(f).then(function(d){ addPhoto(d); });
-    });
-    e.target.value='';
-  };
 
   startCompass().then(function(okc){
     if(!okc) $('cmp').textContent='เครื่องนี้อ่านเข็มทิศไม่ได้ — ใช้ภาพตัวอย่างเทียบแทน';
@@ -705,19 +717,8 @@ function buildCam(){
     .then(function(s){ stream=s; $('vid').srcObject=s; })
     .catch(function(){
       $('camBox').innerHTML='<div style="padding:24px;text-align:center" class="muted">'+
-        'เปิดกล้องในหน้าเว็บไม่ได้<br>ใช้ปุ่ม "กล้องของเครื่อง" ด้านล่างแทน</div>';
-      $('btnShot').disabled=true;
+        'เปิดกล้องในหน้าเว็บไม่ได้ — ใช้เข็มทิศและภาพตัวอย่างจากหน้าแอดมินเทียบแทนได้</div>';
     });
-
-  $('btnShot').onclick=function(){
-    var v=$('vid');
-    if(!v||!v.videoWidth) return toast('กล้องยังไม่พร้อม');
-    var c=document.createElement('canvas');
-    var w=Math.min(1280, v.videoWidth);
-    c.width=w; c.height=Math.round(v.videoHeight*(w/v.videoWidth));
-    c.getContext('2d').drawImage(v,0,0,c.width,c.height);
-    addPhoto(c.toDataURL('image/jpeg',0.7));
-  };
 }
 
 function paintCompass(){
@@ -754,19 +755,6 @@ function shrink(file){
   });
 }
 
-function addPhoto(dataUrl){
-  var cp=S.cp;
-  var ok='';
-  if(cp && cp.photoHeading!=null && S.heading!=null)
-    ok = angDiff(S.heading, cp.photoHeading)<=cp.headingTol ? 'TRUE':'FALSE';
-  S.photos.push({ dataUrl:dataUrl, heading:S.heading, headingOk:ok });
-  var im=document.createElement('img'); im.src=dataUrl;
-  im.title=(S.heading!=null?S.heading+'°':'ไม่ทราบทิศ');
-  $('thumbs').appendChild(im);
-  if(ok==='FALSE') toast('ถ่ายแล้ว แต่ทิศยังไม่ตรง ระบบจะติดธงไว้');
-  else toast('เพิ่มรูปแล้ว');
-}
-
 /* ---------- บันทึกเช็คอิน ---------- */
 $('btnSaveCheckin').onclick=function(){
   var cp=S.cp, btn=this;
@@ -778,14 +766,13 @@ $('btnSaveCheckin').onclick=function(){
                    remark:(w.querySelector('.remark')||{}).value||'' });
   });
   if(missing) return toast('ยังตอบเช็คลิสต์ไม่ครบ');
-  if(cp.requirePhoto && !S.photos.length) return toast('จุดนี้ต้องถ่ายรูปอย่างน้อย 1 รูป');
 
   var p=S.pos, body={
     roundId:S.round.roundId, cpId:cp.cpId,
     lat:p?p.coords.latitude:0, lng:p?p.coords.longitude:0,
     accuracyM:p?Math.round(p.coords.accuracy):999,
     clientTs:new Date().toISOString(), ua:navigator.userAgent,
-    answers:answers, photos:S.photos, overrideReason:''
+    answers:answers, photos:[], overrideReason:''
   };
 
   var d=p?distM(p.coords.latitude,p.coords.longitude,cp.lat,cp.lng):-1;
@@ -793,7 +780,6 @@ $('btnSaveCheckin').onclick=function(){
     var why=prompt('อยู่นอกรัศมีจุดตรวจ ('+(d<0?'ไม่มีพิกัด':d+' ม.')+')\nใส่เหตุผลเพื่อบันทึกแบบยืนยันเอง:');
     if(!why) return;
     body.overrideReason=why;
-    if(!S.photos.length) return toast('กรณียืนยันเอง ต้องมีรูปประกอบ');
   }
 
   btn.disabled=true; btn.textContent='กำลังบันทึก…';
