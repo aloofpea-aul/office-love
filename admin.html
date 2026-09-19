@@ -190,9 +190,13 @@ th{color:var(--dim);font-weight:600;font-size:14px}
           <option value="WORKDAY">วันทำการ</option><option value="HOLIDAY">วันหยุด</option></select></div>
         <div><label>รอบที่</label><input id="rp_no" type="number" min="1" value="1"></div>
         <div><label>เวลา</label><input id="rp_time" type="time" value="18:00"></div>
+        <div><label>สิ้นสุดช่วงยืดหยุ่น</label><input id="rp_flexend" type="time">
+          <span class="muted">เว้นว่าง = เวลาตายตัว</span></div>
         <div><label>เปิดก่อน (นาที)</label><input id="rp_early" type="number" value="15"></div>
         <div><label>ปิดหลัง (นาที)</label><input id="rp_late" type="number" value="60"></div>
       </div>
+      <p class="muted" style="margin:6px 0 0">ใส่ "สิ้นสุดช่วงยืดหยุ่น" เมื่อไม่อยากกำหนดเวลาตายตัว —
+        รอบนั้นจะเดินเมื่อไหร่ก็ได้ตั้งแต่ช่องเวลาจนถึงเวลาสิ้นสุด และ "เปิดก่อน/ปิดหลัง" จะไม่ถูกใช้</p>
       <input type="hidden" id="rp_id">
       <div style="height:14px"></div>
       <button id="btnSaveRp">บันทึกรอบ</button>
@@ -622,15 +626,24 @@ $('btnSaveCl').onclick=function(){
   .then(function(){ toast('บันทึกแล้ว'); }).catch(function(e){ toast(e.message); });
 };
 
+/* ค่าเวลาในชีตอาจเป็นข้อความหรือเป็นวันที่ — ดึงออกมาเป็น HH:mm เสมอ */
+function hm(v){
+  var t=String(v==null?'':v).trim();
+  if(!t) return '';
+  if(t.indexOf('T')>0) t=t.split('T')[1];
+  return t.substring(0,5);
+}
+
 function drawRpTable(){
-  var h='<tr><th>ประเภทวัน</th><th>รอบที่</th><th>เวลา</th><th>เปิดก่อน</th><th>ปิดหลัง</th><th>สถานะ</th><th></th></tr>';
+  var h='<tr><th>ประเภทวัน</th><th>รอบที่</th><th>เวลา / ช่วง</th><th>เปิดก่อน</th><th>ปิดหลัง</th><th>สถานะ</th><th></th></tr>';
   S.data.roundPlan.sort(function(a,b){
     return a.dayType===b.dayType ? (+a.roundNo)-(+b.roundNo) : (a.dayType<b.dayType?1:-1);
   }).forEach(function(p){
     var on=String(p.active).toUpperCase()==='TRUE';
-    var t=String(p.schedTime); if(t.indexOf('T')>0) t=t.split('T')[1].substring(0,5);
+    var t=hm(p.schedTime), fe=hm(p.flexEndTime);
     h+='<tr><td>'+(p.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+'</td><td>'+esc(p.roundNo)+'</td>'+
-       '<td><strong>'+esc(t)+'</strong></td><td>'+esc(p.graceEarlyMin)+' น.</td><td>'+esc(p.graceLateMin)+' น.</td>'+
+       '<td><strong>'+esc(fe?(t+'–'+fe):t)+'</strong>'+(fe?' <span class="pill warn">ยืดหยุ่น</span>':'')+'</td>'+
+       '<td>'+(fe?'—':esc(p.graceEarlyMin)+' น.')+'</td><td>'+(fe?'—':esc(p.graceLateMin)+' น.')+'</td>'+
        '<td><span class="pill '+(on?'ok':'off')+'">'+(on?'ใช้งาน':'ปิด')+'</span></td>'+
        '<td><button class="ghost sm" data-rp="'+esc(p.planId)+'">แก้</button> '+
        '<button class="ghost sm" data-rptog="'+esc(p.planId)+'">'+(on?'ปิด':'เปิด')+'</button></td></tr>';
@@ -639,9 +652,9 @@ function drawRpTable(){
   Array.prototype.forEach.call($('rpTable').querySelectorAll('[data-rp]'),function(b){
     b.onclick=function(){
       var p=S.data.roundPlan.filter(function(x){return x.planId===b.dataset.rp;})[0];
-      var t=String(p.schedTime); if(t.indexOf('T')>0) t=t.split('T')[1].substring(0,5);
       $('rp_id').value=p.planId; $('rp_type').value=p.dayType; $('rp_no').value=p.roundNo;
-      $('rp_time').value=t; $('rp_early').value=p.graceEarlyMin; $('rp_late').value=p.graceLateMin;
+      $('rp_time').value=hm(p.schedTime); $('rp_flexend').value=hm(p.flexEndTime);
+      $('rp_early').value=p.graceEarlyMin; $('rp_late').value=p.graceLateMin;
       window.scrollTo({top:0,behavior:'smooth'});
     };
   });
@@ -649,16 +662,17 @@ function drawRpTable(){
     b.onclick=function(){
       var p=S.data.roundPlan.filter(function(x){return x.planId===b.dataset.rptog;})[0];
       var on=String(p.active).toUpperCase()==='TRUE';
-      var t=String(p.schedTime); if(t.indexOf('T')>0) t=t.split('T')[1].substring(0,5);
-      api('saveRoundPlan',{item:Object.assign({},p,{schedTime:t,active:on?'FALSE':'TRUE'})})
+      api('saveRoundPlan',{item:Object.assign({},p,{schedTime:hm(p.schedTime),
+        flexEndTime:hm(p.flexEndTime), active:on?'FALSE':'TRUE'})})
         .then(load).then(function(){ toast('อัปเดตแล้ว'); });
     };
   });
 }
 $('btnSaveRp').onclick=function(){
   api('saveRoundPlan',{item:{planId:$('rp_id').value,dayType:$('rp_type').value,roundNo:$('rp_no').value,
-    schedTime:$('rp_time').value,graceEarlyMin:$('rp_early').value,graceLateMin:$('rp_late').value,active:'TRUE'}})
-  .then(function(){ $('rp_id').value=''; return load(); })
+    schedTime:$('rp_time').value,flexEndTime:$('rp_flexend').value,
+    graceEarlyMin:$('rp_early').value,graceLateMin:$('rp_late').value,active:'TRUE'}})
+  .then(function(){ $('rp_id').value=''; $('rp_flexend').value=''; return load(); })
   .then(function(){ toast('บันทึกรอบแล้ว'); }).catch(function(e){ toast(e.message); });
 };
 
