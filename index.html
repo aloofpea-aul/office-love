@@ -137,6 +137,8 @@ a{color:var(--pri2)}
       <div id="shiftBox"></div>
     </div>
 
+    <div id="nextRound"></div>
+
     <h3>รอบเดินตรวจ</h3>
     <div id="roundList"></div>
 
@@ -413,7 +415,7 @@ function loadHome(){
     var p=$('dayTypePill');
     p.textContent=j.dayType==='HOLIDAY'?'วันหยุด · 10 รอบ':'วันทำการ · 6 รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
-    paintShift(); paintRounds();
+    paintShift(); paintRounds(); startReminder();
     var staff = j.user.role==='SUPERVISOR' || j.user.role==='ADMIN';
     $('staffLinks').classList.toggle('hide', !staff);
     $('lnkAdmin').classList.toggle('hide', j.user.role!=='ADMIN');
@@ -480,6 +482,83 @@ function paintRounds(){
     div.onclick=function(){ openRound(r); };
     box.appendChild(div);
   });
+}
+
+/* ================== เตือนก่อนถึงรอบ (ในแอป) ================== */
+var NOTIF = { timer:null, sent:{}, lastLoad:0 };
+var BELL_ICON = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 192 192\'%3E%3Crect width=\'192\' height=\'192\' rx=\'40\' fill=\'%235b2d8e\'/%3E%3Cpath d=\'M96 34 L146 54 v42c0 34-21 55-50 62-29-7-50-28-50-62V54z\' fill=\'%23c4b5fd\'/%3E%3C/svg%3E';
+
+function notifOk(){ try{ return ('Notification' in window) && Notification.permission==='granted'; }catch(e){ return false; } }
+
+function askNotif(){
+  if(!('Notification' in window)) return toast('เครื่องนี้ไม่รองรับการแจ้งเตือน — ใช้แถบเตือนในหน้าจอแทนได้');
+  Notification.requestPermission().then(function(p){
+    tickReminder();
+    toast(p==='granted' ? 'เปิดแจ้งเตือนแล้ว — เปิดแอปค้างไว้จะเตือนก่อนถึงรอบ'
+                        : 'ยังไม่ได้อนุญาต — เปิดได้ที่ตั้งค่าเบราว์เซอร์');
+  }).catch(function(){});
+}
+
+function fireNotif(title, body, tag){
+  try{
+    if(notifOk()){
+      var opt={ body:body, tag:tag, icon:BELL_ICON, badge:BELL_ICON, renotify:true, requireInteraction:false };
+      if(navigator.serviceWorker && navigator.serviceWorker.ready)
+        navigator.serviceWorker.ready.then(function(reg){ reg.showNotification(title,opt); })
+          .catch(function(){ new Notification(title,opt); });
+      else new Notification(title,opt);
+    }
+  }catch(e){}
+  try{ if(navigator.vibrate) navigator.vibrate([250,120,250]); }catch(e){}
+}
+
+function nextRound(){
+  var now=Date.now(), best=null;
+  ((S.boot&&S.boot.rounds)||[]).forEach(function(r){
+    if(['COMPLETE','MISSED','PARTIAL'].indexOf(r.status)>=0) return;
+    if(new Date(r.closeAt).getTime() < now) return;
+    if(!best || new Date(r.schedAt).getTime() < new Date(best.schedAt).getTime()) best=r;
+  });
+  return best;
+}
+
+function tickReminder(){
+  var box=$('nextRound'); if(!box) return;
+  var r=nextRound();
+  if(!r){ box.innerHTML='<div class="banner ok">เดินครบทุกรอบของวันนี้แล้ว</div>'; return; }
+
+  var diff = Math.round((new Date(r.schedAt).getTime()-Date.now())/60000);
+  var kind = diff>0 ? 'warn' : (diff<-15 ? 'bad' : 'ok');
+  var txt  = diff>0 ? ('รอบถัดไป รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. · อีก '+diff+' นาที')
+                    : ('ถึงเวลารอบที่ '+r.roundNo+' ('+hhmm(r.schedAt)+' น.) แล้ว'+(diff<-15?(' · สาย '+(-diff)+' นาที'):''));
+  var bell = ('Notification' in window) && Notification.permission!=='granted'
+    ? '<button class="btn-ghost btn-sm" id="btnBell" style="margin-top:8px">🔔 เปิดแจ้งเตือนบนเครื่องนี้</button>' : '';
+  box.innerHTML='<div class="banner '+kind+'">⏰ '+txt+'</div>'+bell;
+  if($('btnBell')) $('btnBell').onclick=askNotif;
+
+  var before = (S.boot && S.boot.remindBeforeMin) || 10;
+  if(diff>0 && diff<=before && !NOTIF.sent['b'+r.roundId]){
+    NOTIF.sent['b'+r.roundId]=true;
+    fireNotif('ใกล้ถึงรอบเดินตรวจ','รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. · อีก '+diff+' นาที','ol-b-'+r.roundId);
+  }
+  if(diff<=0 && !NOTIF.sent['s'+r.roundId]){
+    NOTIF.sent['s'+r.roundId]=true;
+    fireNotif('ถึงเวลาเดินตรวจ','รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. — เริ่มได้เลย','ol-s-'+r.roundId);
+  }
+
+  // ดึงรอบใหม่ทุก 5 นาที เผื่อมีการเช็คอินจากเครื่องอื่นหรือรอบเปลี่ยนสถานะ
+  if(!document.hidden && !$('scHome').classList.contains('hide') && Date.now()-NOTIF.lastLoad > 300000){
+    NOTIF.lastLoad=Date.now();
+    api('bootstrap').then(function(j){ S.boot=j; paintShift(); paintRounds(); }).catch(function(){});
+  }
+}
+
+function startReminder(){
+  NOTIF.lastLoad=Date.now();
+  if(NOTIF.timer) clearInterval(NOTIF.timer);
+  NOTIF.timer=setInterval(tickReminder, 20000);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) tickReminder(); });
+  tickReminder();
 }
 
 /* ========================= รอบ ========================= */
