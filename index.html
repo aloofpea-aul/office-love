@@ -70,7 +70,8 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .topbar{position:sticky;top:0;z-index:20;background:rgba(18,16,26,.92);
   backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 16px}
 .topbar .wrap{padding:0}
-.back{background:none;width:auto;min-height:auto;padding:6px 0;font-size:17px;color:var(--pri2)}
+.back{background:none;width:auto;font-size:17px;color:var(--pri2);
+  display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;margin:-10px 0 -10px -16px}
 .hide{display:none!important}
 .banner{padding:12px 14px;border-radius:12px;font-size:16px;margin-bottom:12px}
 .banner.warn{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4)}
@@ -258,17 +259,31 @@ function thaiDate(s){
 }
 
 /* ========================= เรียก API ========================= */
-function api(action, body){
+function apiFetch(action, body, retry){
   var payload = Object.assign({ action:action, token:S.token }, body||{});
   return fetch(API, {
     method:'POST', redirect:'follow',
     headers:{ 'Content-Type':'text/plain;charset=utf-8' },
     body: JSON.stringify(payload)
-  }).then(function(r){ return r.json(); }).then(function(j){
+  }).then(function(r){ return r.text(); }).then(function(txt){
+    var j;
+    try{ j=JSON.parse(txt); }
+    catch(e){
+      /* บางครั้ง Google ตอบเป็นหน้า HTML (ตื่นเครื่อง/เปลี่ยนเส้นทาง) — รอแล้วลองใหม่หนึ่งครั้ง */
+      if(!retry) return new Promise(function(res){ setTimeout(res,1500); })
+                        .then(function(){ return apiFetch(action, body, true); });
+      throw new Error('เซิร์ฟเวอร์ยังไม่พร้อม กรุณากดอีกครั้ง');
+    }
     if(!j.ok) throw new Error(j.error||'เกิดข้อผิดพลาด');
     return j;
+  }, function(){
+    if(!retry) return new Promise(function(res){ setTimeout(res,1500); })
+                      .then(function(){ return apiFetch(action, body, true); });
+    throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่');
   });
 }
+function api(action, body){ return apiFetch(action, body, false); }
+function isAuthErr(e){ return /เซสชัน|สิทธิ์|เข้าสู่ระบบใหม่/.test(e && e.message || ''); }
 
 /* ========================= คิวออฟไลน์ (IndexedDB) ========================= */
 var DB=null;
@@ -933,7 +948,19 @@ $('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
   try{ t=localStorage.getItem('ol_token')||''; }catch(e){}
   if(!t){ show('scLogin'); return; }
   S.token=t;
-  loadHome().catch(function(){ show('scLogin'); });
+  /* ค้างล็อกอินไว้เสมอ — ออกจากระบบเมื่อกดปุ่มออก หรือเซสชันหมดอายุจริงเท่านั้น */
+  (function tryHome(n){
+    loadHome().catch(function(e){
+      if(isAuthErr(e)){
+        S.token=''; try{ localStorage.removeItem('ol_token'); }catch(_){}
+        show('scLogin'); $('loginMsg').textContent='เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่';
+        return;
+      }
+      if(n<3){ setTimeout(function(){ tryHome(n+1); }, 1500*n); return; }
+      show('scLogin');
+      $('loginMsg').textContent='เชื่อมต่อไม่ได้ — กดเข้าสู่ระบบเพื่อลองใหม่';
+    });
+  })(1);
 })();
 </script>
 </body>
