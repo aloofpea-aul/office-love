@@ -101,6 +101,8 @@ svg.chart{width:100%;height:150px;display:block}
   <div class="row between" style="margin-bottom:14px">
     <div><h1>หน้าหัวหน้าเวร</h1><span class="muted" id="whoami"></span></div>
     <div class="row">
+      <a class="ghost sm" href="report.html" style="text-decoration:none;display:inline-flex;align-items:center;
+         padding:7px 11px;border-radius:12px;font-weight:600;font-size:14px">📄 รายงานรายเดือน</a>
       <button class="ghost sm" id="btnAuto">⏱ รีเฟรชอัตโนมัติ: เปิด</button>
       <button class="ghost sm" id="btnLogout">ออก</button>
     </div>
@@ -378,10 +380,11 @@ function drawIncidents(){
       '<div class="muted">'+esc(i.category)+' · '+(sevTxt[i.severity]||i.severity)+' · '+
       esc(i.userName)+' · '+hhmm(i.ts)+' น. · '+esc(i.workDate)+'</div>'+
       (i.detail?'<div style="margin-top:6px;font-size:15px">'+esc(i.detail)+'</div>':'')+
-      (closed?'':'<div class="row" style="margin-top:10px">'+
-        (i.status==='NEW'?'<button class="ghost sm" data-ack="'+esc(i.incId)+'">รับทราบ</button>':'')+
-        (i.status!=='IN_PROGRESS'?'<button class="ghost sm" data-prog="'+esc(i.incId)+'">กำลังดำเนินการ</button>':'')+
-        '<button class="sm" data-close="'+esc(i.incId)+'">ปิดเรื่อง</button></div>')+
+      (i.assignedTo?'<div class="muted" style="margin-top:4px">ผู้รับผิดชอบ: '+esc(i.assignedTo)+'</div>':'')+
+      '<div class="row" style="margin-top:10px">'+
+        (closed?'':'<button class="ghost sm" data-ack="'+esc(i.incId)+'">รับทราบ</button>')+
+        '<button class="sm" data-inc="'+esc(i.incId)+'">'+(closed?'ดูรายละเอียด':'จัดการเรื่องนี้')+'</button>'+
+      '</div>'+
       '</div>';
   }).join('');
 
@@ -398,8 +401,109 @@ function drawIncidents(){
     });
   }
   bind('data-ack','ACK',false);
-  bind('data-prog','IN_PROGRESS',false);
-  bind('data-close','CLOSED',true);
+
+  Array.prototype.forEach.call($('incList').querySelectorAll('[data-inc]'),function(b){
+    b.onclick=function(){ openIncident(b.dataset.inc); };
+  });
+}
+
+/* ===================== จัดการเหตุการณ์ ===================== */
+var INC={ id:null, photos:[] };
+
+function openIncident(incId){
+  INC={ id:incId, photos:[] };
+  $('modal').classList.remove('hide');
+  $('modalBox').innerHTML='<p class="muted">กำลังโหลด…</p>';
+  api('incidentDetail',{incId:incId}).then(function(j){
+    var i=j.incident;
+    var stTxt={NEW:'ใหม่',ACK:'รับทราบแล้ว',IN_PROGRESS:'กำลังดำเนินการ',CLOSED:'ปิดแล้ว'};
+    var svTxt={HIGH:'รุนแรงสูง',MED:'ปานกลาง',LOW:'ต่ำ'};
+    var before=j.photos.filter(function(p){return p.phase!=='หลังแก้ไข';});
+    var after =j.photos.filter(function(p){return p.phase==='หลังแก้ไข';});
+    function strip(list,empty){
+      return list.length ? '<div class="photos">'+list.map(function(p){
+        return '<a href="'+esc(p.url)+'" target="_blank" rel="noopener"><img src="'+esc(p.url)+'" alt=""></a>';
+      }).join('')+'</div>' : '<p class="muted">'+empty+'</p>';
+    }
+
+    var h='<div class="row between"><h2 style="margin:0">'+esc(i.title)+'</h2>'+
+          '<button class="ghost sm" id="mClose">ปิด</button></div>'+
+          '<dl>'+
+          '<dt>หมวด</dt><dd>'+esc(i.category)+' · '+(svTxt[i.severity]||i.severity)+'</dd>'+
+          '<dt>ผู้แจ้ง</dt><dd>'+esc(i.userName)+' · '+hhmm(i.ts)+' น.</dd>'+
+          (i.cpName?'<dt>จุดที่พบ</dt><dd>'+esc(i.cpName)+'</dd>':'')+
+          '<dt>สถานะ</dt><dd><span class="pill '+(i.status==='CLOSED'?'ok':'warn')+'">'+
+            (stTxt[i.status]||i.status)+'</span></dd>'+
+          (i.lat?'<dt>พิกัด</dt><dd><a href="https://www.google.com/maps?q='+i.lat+','+i.lng+
+            '" target="_blank" rel="noopener">เปิดแผนที่</a></dd>':'')+
+          '</dl>'+
+          (i.detail?'<p style="margin:6px 0 0">'+esc(i.detail)+'</p>':'');
+
+    h+='<h3 style="margin-top:16px">รูปตอนแจ้ง ('+before.length+')</h3>'+strip(before,'ไม่มีรูป');
+    h+='<h3 style="margin-top:14px">รูปหลังแก้ไข ('+after.length+')</h3>'+strip(after,'ยังไม่มีรูปหลังแก้ไข');
+
+    if(i.locked){
+      h+='<div class="banner ok" style="margin-top:16px">งวดเดือนนี้ปิดแล้ว แก้ไขเรื่องนี้ไม่ได้</div>';
+    }else{
+      h+='<hr style="border:0;border-top:1px solid var(--line);margin:18px 0">'+
+         '<label style="display:block;font-size:14px;color:var(--dim);margin-bottom:4px">ผู้รับผิดชอบ</label>'+
+         '<select id="incAssign" style="width:100%"><option value="">— ยังไม่มอบหมาย —</option>'+
+         j.staff.map(function(n){
+           return '<option value="'+esc(n)+'"'+(n===i.assignedTo?' selected':'')+'>'+esc(n)+'</option>'; }).join('')+
+         '</select>'+
+         '<label style="display:block;font-size:14px;color:var(--dim);margin:12px 0 4px">สถานะ</label>'+
+         '<select id="incStatus" style="width:100%">'+
+           ['NEW','ACK','IN_PROGRESS','CLOSED'].map(function(k){
+             return '<option value="'+k+'"'+(k===i.status?' selected':'')+'>'+stTxt[k]+'</option>'; }).join('')+
+         '</select>'+
+         '<label style="display:block;font-size:14px;color:var(--dim);margin:12px 0 4px">เพิ่มรูปหลังแก้ไข</label>'+
+         '<input id="incPhoto" type="file" accept="image/*" capture="environment" multiple style="width:100%">'+
+         '<div class="photos" id="incThumbs"></div>'+
+         '<label style="display:block;font-size:14px;color:var(--dim);margin:12px 0 4px">สรุปการแก้ไข (ต้องกรอกเมื่อปิดเรื่อง)</label>'+
+         '<textarea id="incNote" style="width:100%;min-height:80px;font-family:inherit;font-size:16px;padding:10px;'+
+           'border-radius:10px;background:var(--card2);color:var(--txt);border:1px solid var(--line)">'+
+           esc(i.closeNote||'')+'</textarea>'+
+         '<div style="height:14px"></div>'+
+         '<button id="incSave" style="width:100%">บันทึกการจัดการ</button>';
+    }
+
+    $('modalBox').innerHTML=h;
+    $('mClose').onclick=closeModal;
+    var fp=$('incPhoto');
+    if(fp) fp.onchange=function(e){
+      Array.prototype.forEach.call(e.target.files,function(f){
+        shrinkImg(f).then(function(d){
+          INC.photos.push({dataUrl:d});
+          var im=document.createElement('img'); im.src=d; $('incThumbs').appendChild(im);
+        });
+      });
+      e.target.value='';
+    };
+    var sv=$('incSave');
+    if(sv) sv.onclick=function(){
+      var st=$('incStatus').value, note=$('incNote').value.trim();
+      if(st==='CLOSED' && !note) return toast('ปิดเรื่องต้องกรอกสรุปการแก้ไข');
+      sv.disabled=true; sv.textContent='กำลังบันทึก…';
+      api('incidentUpdate',{incId:INC.id, status:st, assignedTo:$('incAssign').value,
+                            closeNote:note, photos:INC.photos})
+        .then(function(){ toast('บันทึกแล้ว'); closeModal(); return load(); })
+        .catch(function(e){ toast(e.message,4000); sv.disabled=false; sv.textContent='บันทึกการจัดการ'; });
+    };
+  }).catch(function(e){ $('modalBox').innerHTML='<p>'+esc(e.message)+'</p>'; });
+}
+
+function shrinkImg(file){
+  return new Promise(function(res){
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function(){
+      var w=Math.min(1280,img.width), h=Math.round(img.height*(w/img.width));
+      var c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg',0.7));
+    };
+    img.src=url;
+  });
 }
 
 /* ===================== รายละเอียดเช็คอิน ===================== */
