@@ -24,7 +24,7 @@ var CFG = {
   APP_CODE          : 'OFFICELOVE',  // ค่าที่ต้องมีในคอลัมน์ Apps ของแพลตฟอร์ม
   DRIVE_ROOT        : 'OfficeLove',  // โฟลเดอร์เก็บรูปใน Drive
   TZ                : 'Asia/Bangkok',
-  TOKEN_TTL_DAYS    : 30,
+  TOKEN_TTL_DAYS    : 3650,          // ค้างล็อกอินไว้ ออกเมื่อกดปุ่มออกจากระบบเท่านั้น
   DAY_START_HOUR    : 6,             // วันปฏิบัติงานเริ่ม 06:00
   LINE_SOFT_CAP     : 250,           // เกินนี้ส่งเฉพาะเรื่องด่วน
   LINE_HARD_CAP     : 290            // เกินนี้หยุดส่ง LINE
