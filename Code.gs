@@ -1479,12 +1479,15 @@ function migrateColumns() {
     var sh = sheetOf(tab);
     var w = Math.max(sh.getLastColumn(), 1);
     var head = sh.getRange(1, 1, 1, w).getValues()[0].map(function (h) { return String(h).trim(); });
-    SCHEMA[tab].forEach(function (col) {
+    while (head.length && !head[head.length - 1]) head.pop();
+    SCHEMA[tab].forEach(function (col, i) {
       if (head.indexOf(col) >= 0) return;
-      var at = head.length + 1;
+      // แทรกตรงตำแหน่งเดียวกับใน SCHEMA — ห้ามต่อท้าย ไม่งั้น setupSheets จะเปลี่ยนชื่อหัวคอลัมน์ทับข้อมูลเดิม
+      var at = i + 1;
+      if (at <= sh.getLastColumn()) sh.insertColumnBefore(at);
       sh.getRange(1, at).setValue(col);
       sh.getRange(1, at, sh.getMaxRows(), 1).setNumberFormat('@');
-      head.push(col);
+      head.splice(i, 0, col);
       added.push(tab + '.' + col);
     });
   });
@@ -1620,6 +1623,39 @@ function setNotifyChannel(v) {
   }
   Logger.log('ไม่พบค่าระบบ NOTIFY_CHANNEL — รัน upgradeConfig() ก่อน');
   return '';
+}
+
+/** คืนค่าเป็นข้อความ HH:mm จากค่าเวลาใด ๆ */
+function hhmmOf(v) {
+  var p = parseHM(v);
+  return p ? (('0' + p.h).slice(-2) + ':' + ('0' + p.m).slice(-2)) : '';
+}
+
+/**
+ * ซ่อมชีต RoundPlan ที่คอลัมน์เลื่อน เพราะ flexEndTime เคยถูกต่อท้ายแล้ว setupSheets
+ * เขียนหัวคอลัมน์ทับตามลำดับ SCHEMA — อ่านค่าตามลำดับเดิมแล้วเขียนกลับให้ตรงลำดับใหม่
+ * มีตัวตรวจอาการในตัว รันซ้ำแล้วไม่พังซ้ำ
+ */
+function repairRoundPlan() {
+  var sh = sheetOf('RoundPlan');
+  var n = sh.getLastRow() - 1;
+  if (n < 1) { Logger.log('RoundPlan ว่าง ไม่มีอะไรต้องซ่อม'); return 0; }
+  var v = sh.getRange(2, 1, n, 8).getValues();
+
+  // อาการคือคอลัมน์ที่ 5 (ตอนนี้ชื่อ flexEndTime) ยังเก็บตัวเลข graceEarlyMin อยู่
+  var broken = v.every(function (r) {
+    var x = String(r[4]).trim();
+    return x !== '' && !isNaN(Number(x));
+  });
+  if (!broken) { Logger.log('RoundPlan เรียงถูกอยู่แล้ว ไม่ได้แก้อะไร'); return 0; }
+
+  var out = v.map(function (r) {
+    return [r[0], r[1], r[2], hhmmOf(r[3]), hhmmOf(r[7]), num(r[4], 15), num(r[5], 60), 'TRUE'];
+  });
+  sh.getRange(2, 1, n, 8).setNumberFormat('@').setValues(out);
+  SpreadsheetApp.flush();
+  Logger.log('ซ่อม RoundPlan แล้ว ' + n + ' แถว — รัน fixAndRebuild() ต่อ');
+  return n;
 }
 
 /**
