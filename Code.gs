@@ -1480,6 +1480,28 @@ function setLineToken() {
   PropertiesService.getScriptProperties().setProperty('LINE_TOKEN', 'ใส่ channel access token ที่นี่');
 }
 
+/**
+ * เปิด/ปิดการแจ้งเตือนอย่างรวดเร็ว — เลือกฟังก์ชันแล้วกด Run ใน Editor
+ * (แก้ที่หน้าแอดมิน แท็บค่าระบบ ก็ได้ผลเหมือนกัน)
+ */
+function notifyOff()      { return setNotifyChannel('OFF');   }
+function notifyOnWebex()  { return setNotifyChannel('WEBEX'); }
+function notifyOnLine()   { return setNotifyChannel('LINE');  }
+function notifyOnBoth()   { return setNotifyChannel('BOTH');  }
+
+function setNotifyChannel(v) {
+  var rows = readTable('Config');
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].key) !== 'NOTIFY_CHANNEL') continue;
+    updateRow('Config', rows[i]._row, { value: v });
+    SpreadsheetApp.flush();
+    Logger.log('NOTIFY_CHANNEL = ' + v);
+    return v;
+  }
+  Logger.log('ไม่พบค่าระบบ NOTIFY_CHANNEL — รัน upgradeConfig() ก่อน');
+  return '';
+}
+
 /** ใส่โทเคนบอต Webex (รันจาก Editor ครั้งเดียว แล้วลบโทเคนออกจากโค้ด) */
 function setWebexToken() {
   PropertiesService.getScriptProperties().setProperty('WEBEX_TOKEN', 'ใส่ bot access token ที่นี่');
