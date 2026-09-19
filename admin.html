@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Office Love — ตั้งค่าระบบ</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#12101a;--card:#1e1b2b;--card2:#2a2540;--line:#3a3356;--txt:#f2eefb;
+  --dim:#a79fc2;--pri:#8b5cf6;--pri2:#a78bfa;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:'Noto Sans Thai',system-ui,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:880px;margin:0 auto;padding:16px 16px 60px}
+h1{font-size:23px;margin:0 0 4px} h2{font-size:20px;margin:0 0 12px} h3{font-size:18px;margin:0 0 8px}
+.muted{color:var(--dim);font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+.row{display:flex;gap:10px;align-items:center} .row.between{justify-content:space-between} .grow{flex:1}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+button{font-family:inherit;font-size:16px;font-weight:600;border:0;border-radius:12px;padding:12px 16px;
+  background:var(--pri);color:#fff;cursor:pointer;min-height:48px}
+.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.danger{background:var(--bad)} .sm{font-size:14px;padding:8px 12px;min-height:38px}
+input,select,textarea{font-family:inherit;font-size:16px;width:100%;padding:11px;border-radius:10px;
+  background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+label{display:block;font-size:14px;color:var(--dim);margin:10px 0 4px}
+#map{height:340px;border-radius:14px;border:1px solid var(--line);margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{background:var(--card2);color:var(--dim);border:1px solid var(--line)}
+.tabs button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:14px}
+.pill{display:inline-block;font-size:13px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--dim)}
+.pill.ok{background:rgba(34,197,94,.18);color:#86efac}
+.pill.off{background:rgba(239,68,68,.18);color:#fca5a5}
+.banner{padding:11px 13px;border-radius:11px;font-size:15px;margin:10px 0}
+.banner.warn{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4)}
+.banner.bad{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4)}
+.banner.ok{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4)}
+.hide{display:none!important}
+.toast{position:fixed;left:16px;right:16px;bottom:18px;z-index:9999;padding:13px 16px;border-radius:12px;
+  background:var(--card2);border:1px solid var(--line);max-width:560px;margin:0 auto;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.dial{width:110px;height:110px;border-radius:50%;border:2px solid var(--line);position:relative;margin:0 auto;background:var(--card2)}
+.dial .n{position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--dim)}
+.dial .arrow{position:absolute;left:50%;top:50%;width:3px;height:44px;background:var(--pri2);
+  transform-origin:bottom center;border-radius:2px}
+.ref{width:100%;max-width:220px;border-radius:12px;border:1px solid var(--line);display:block;margin-top:8px}
+.leaflet-container{background:#1a1726}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- เข้าสู่ระบบ -->
+<section id="scLogin">
+  <div style="text-align:center;margin:40px 0 20px">
+    <div style="font-size:46px">⚙️</div>
+    <h1>Office Love — ตั้งค่าระบบ</h1>
+    <p class="muted">สำหรับผู้ดูแลระบบเท่านั้น</p>
+  </div>
+  <div class="card" style="max-width:420px;margin:0 auto">
+    <label>ชื่อผู้ใช้</label><input id="inUser">
+    <label>รหัสผ่าน</label><input id="inPass" type="password">
+    <div style="height:14px"></div>
+    <button id="btnLogin" style="width:100%">เข้าสู่ระบบ</button>
+    <p id="loginMsg" class="muted" style="text-align:center;margin:10px 0 0"></p>
+  </div>
+</section>
+
+<!-- แผงตั้งค่า -->
+<section id="scMain" class="hide">
+  <div class="row between" style="margin-bottom:14px">
+    <div><h1>ตั้งค่าระบบ</h1><span class="muted" id="whoami"></span></div>
+    <button class="ghost sm" id="btnLogout">ออกจากระบบ</button>
+  </div>
+
+  <div class="tabs">
+    <button data-t="cp"  class="on">จุดตรวจ</button>
+    <button data-t="cl">เช็คลิสต์</button>
+    <button data-t="rp">ตารางรอบ</button>
+    <button data-t="hd">วันหยุด</button>
+    <button data-t="cf">ค่าระบบ</button>
+  </div>
+
+  <!-- ── จุดตรวจ ── -->
+  <div id="tab-cp">
+    <div class="card">
+      <h2>แผนที่จุดตรวจ</h2>
+      <p class="muted">แตะจุดบนแผนที่เพื่อแก้ไข · ลากหมุดเพื่อย้ายตำแหน่ง · วงกลมคือรัศมีที่ยอมรับ</p>
+      <div id="map"></div>
+      <div id="mapWarn"></div>
+      <button class="ghost" id="btnNewCp">+ เพิ่มจุดตรวจใหม่</button>
+    </div>
+
+    <div class="card hide" id="cpForm">
+      <div class="row between"><h2 id="cpFormTitle">แก้ไขจุดตรวจ</h2>
+        <button class="ghost sm" id="btnCloseCp">ปิด</button></div>
+
+      <div class="grid">
+        <div><label>รหัสจุด</label><input id="f_code" maxlength="4" placeholder="A"></div>
+        <div><label>ลำดับเดิน</label><input id="f_order" type="number" min="1"></div>
+      </div>
+      <label>ชื่อจุด</label><input id="f_name" placeholder="ประตูเข้าออก">
+
+      <h3 style="margin-top:18px">ตำแหน่ง</h3>
+      <div class="grid">
+        <div><label>ละติจูด</label><input id="f_lat" inputmode="decimal"></div>
+        <div><label>ลองจิจูด</label><input id="f_lng" inputmode="decimal"></div>
+        <div><label>รัศมี (เมตร)</label><input id="f_radius" type="number" min="5" max="200"></div>
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">
+        <button class="ghost sm" id="btnUseGps">📍 ใช้ตำแหน่งปัจจุบัน (เฉลี่ย 30 ค่า)</button>
+        <span class="muted" id="gpsStat"></span>
+      </div>
+      <div id="cpWarn"></div>
+
+      <h3 style="margin-top:18px">รูปถ่าย</h3>
+      <label class="row" style="gap:8px;margin:6px 0">
+        <input type="checkbox" id="f_reqPhoto" style="width:20px;height:20px"> <span>จุดนี้ต้องถ่ายรูปทุกครั้ง</span>
+      </label>
+      <label>คำอธิบายให้ รปภ.</label>
+      <input id="f_hint" placeholder="ถ่ายให้เห็นประตูคลังพัสดุและแม่กุญแจ">
+
+      <div class="grid" style="margin-top:10px">
+        <div>
+          <label>ทิศที่ต้องหันกล้อง (องศา · เว้นว่าง = ไม่บังคับ)</label>
+          <input id="f_heading" type="number" min="0" max="359" placeholder="ว่าง = ไม่บังคับ">
+          <span class="muted" id="headText"></span>
+        </div>
+        <div>
+          <label>ค่าเบี่ยงเบนที่ยอมรับ (±องศา)</label>
+          <input id="f_tol" type="number" min="10" max="90" value="45">
+        </div>
+        <div style="text-align:center">
+          <label>เข็มทิศเครื่องนี้</label>
+          <div class="dial"><span class="n">N</span><div class="arrow" id="dialArrow" style="transform:translate(-50%,-100%) rotate(0deg)"></div></div>
+          <button class="ghost sm" id="btnReadHead" style="margin-top:8px">อ่านทิศตอนนี้</button>
+        </div>
+      </div>
+
+      <label>รูปตัวอย่าง (ระบบจะเอาไปซ้อนบนกล้องของ รปภ.)</label>
+      <input id="f_ref" type="file" accept="image/*" capture="environment">
+      <img id="refPreview" class="ref hide" alt="">
+
+      <label class="row" style="gap:8px;margin:14px 0">
+        <input type="checkbox" id="f_active" style="width:20px;height:20px" checked> <span>เปิดใช้งานจุดนี้</span>
+      </label>
+      <label>หมายเหตุ</label><input id="f_note">
+
+      <div class="row" style="margin-top:16px">
+        <button id="btnSaveCp" class="grow">บันทึกจุดตรวจ</button>
+      </div>
+      <p class="muted" style="margin:10px 0 0">ลบจุดไม่ได้ — ถ้าเลิกใช้ให้เอาเครื่องหมาย "เปิดใช้งาน" ออก เพื่อให้ข้อมูลเช็คอินเก่ายังอ้างอิงได้</p>
+    </div>
+
+    <div class="card">
+      <h2>รายการจุดตรวจ</h2>
+      <div style="overflow-x:auto"><table id="cpTable"></table></div>
+    </div>
+  </div>
+
+  <!-- ── เช็คลิสต์ ── -->
+  <div id="tab-cl" class="hide">
+    <div class="card">
+      <h2>เช็คลิสต์ต่อจุด</h2>
+      <p class="muted">เลือก "ทุกจุด" ถ้าต้องการให้ถามเหมือนกันหมด</p>
+      <div class="grid">
+        <div><label>ใช้กับจุด</label><select id="cl_cp"></select></div>
+        <div><label>ลำดับ</label><input id="cl_order" type="number" value="1"></div>
+      </div>
+      <label>ข้อความคำถาม</label><input id="cl_label" placeholder="ประตู / รั้ว / กลอนล็อก">
+      <label class="row" style="gap:8px;margin:12px 0">
+        <input type="checkbox" id="cl_req" style="width:20px;height:20px" checked> <span>ต้องตอบก่อนบันทึก</span>
+      </label>
+      <input type="hidden" id="cl_id">
+      <button id="btnSaveCl">บันทึกข้อเช็ค</button>
+    </div>
+    <div class="card"><div style="overflow-x:auto"><table id="clTable"></table></div></div>
+  </div>
+
+  <!-- ── ตารางรอบ ── -->
+  <div id="tab-rp" class="hide">
+    <div class="card">
+      <h2>ตารางรอบเดินตรวจ</h2>
+      <div class="banner warn">แก้แล้วมีผลกับรอบที่สร้างใหม่เท่านั้น รอบของวันนี้ที่สร้างไปแล้วไม่เปลี่ยน</div>
+      <div class="grid">
+        <div><label>ประเภทวัน</label><select id="rp_type">
+          <option value="WORKDAY">วันทำการ</option><option value="HOLIDAY">วันหยุด</option></select></div>
+        <div><label>รอบที่</label><input id="rp_no" type="number" min="1" value="1"></div>
+        <div><label>เวลา</label><input id="rp_time" type="time" value="18:00"></div>
+        <div><label>เปิดก่อน (นาที)</label><input id="rp_early" type="number" value="15"></div>
+        <div><label>ปิดหลัง (นาที)</label><input id="rp_late" type="number" value="60"></div>
+      </div>
+      <input type="hidden" id="rp_id">
+      <div style="height:14px"></div>
+      <button id="btnSaveRp">บันทึกรอบ</button>
+    </div>
+    <div class="card"><div style="overflow-x:auto"><table id="rpTable"></table></div></div>
+  </div>
+
+  <!-- ── วันหยุด ── -->
+  <div id="tab-hd" class="hide">
+    <div class="card">
+      <h2>วันหยุด</h2>
+      <p class="muted">เสาร์-อาทิตย์ระบบนับเป็นวันหยุดอัตโนมัติ ใส่เฉพาะวันหยุดราชการและวันหยุดพิเศษ</p>
+      <div class="grid">
+        <div><label>วันที่</label><input id="hd_date" type="date"></div>
+        <div><label>ชื่อวันหยุด</label><input id="hd_name" placeholder="วันสงกรานต์"></div>
+        <div><label>ประเภท</label><select id="hd_kind">
+          <option>ราชการ</option><option>พิเศษ</option><option>กฟภ. ประกาศ</option></select></div>
+      </div>
+      <div style="height:14px"></div>
+      <button id="btnSaveHd">เพิ่มวันหยุด</button>
+    </div>
+    <div class="card"><div style="overflow-x:auto"><table id="hdTable"></table></div></div>
+  </div>
+
+  <!-- ── ค่าระบบ ── -->
+  <div id="tab-cf" class="hide">
+    <div class="card">
+      <h2>ค่าระบบ</h2>
+      <div style="overflow-x:auto"><table id="cfTable"></table></div>
+    </div>
+  </div>
+</section>
+
+</div>
+<div id="toast" class="toast hide"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="config.js"></script>
+<script>
+/* ==========================================================================
+   ตั้งค่า — ใช้ URL เดียวกับ index.html
+   ========================================================================== */
+var API = window.OL_API || '';
+
+var $=function(id){return document.getElementById(id);};
+var S={ token:'', data:null, editing:null, map:null, layer:null, heading:null, refDataUrl:'' };
+
+function toast(m,ms){var t=$('toast');t.textContent=m;t.classList.remove('hide');
+  clearTimeout(t._t);t._t=setTimeout(function(){t.classList.add('hide');},ms||2800);}
+function api(action,body){
+  return fetch(API,{method:'POST',redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(Object.assign({action:action,token:S.token},body||{}))})
+  .then(function(r){return r.json();}).then(function(j){
+    if(!j.ok) throw new Error(j.error||'ผิดพลาด'); return j; });
+}
+function dirName(d){var n=['เหนือ','ต.อ.เฉียงเหนือ','ตะวันออก','ต.อ.เฉียงใต้','ใต้','ต.ต.เฉียงใต้','ตะวันตก','ต.ต.เฉียงเหนือ'];
+  return n[Math.round(((d%360)+360)%360/45)%8];}
+function distM(a1,o1,a2,o2){var R=6371000,r=Math.PI/180,dp=(a2-a1)*r,dl=(o2-o1)*r;
+  var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(a1*r)*Math.cos(a2*r)*Math.sin(dl/2)*Math.sin(dl/2);
+  return Math.round(R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)));}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+
+/* ===================== เข้าสู่ระบบ ===================== */
+$('btnLogin').onclick=function(){
+  var b=this; b.disabled=true; $('loginMsg').textContent='กำลังตรวจสอบ…';
+  api('login',{username:$('inUser').value.trim(),password:$('inPass').value})
+  .then(function(j){
+    if(j.user.role!=='ADMIN') throw new Error('บัญชีนี้ไม่ใช่ผู้ดูแลระบบ');
+    S.token=j.token; try{localStorage.setItem('ol_admin_token',j.token);}catch(e){}
+    return load();
+  }).catch(function(e){ $('loginMsg').textContent=e.message; })
+    .then(function(){ b.disabled=false; });
+};
+$('btnLogout').onclick=function(){
+  S.token=''; try{localStorage.removeItem('ol_admin_token');}catch(e){}
+  $('scMain').classList.add('hide'); $('scLogin').classList.remove('hide');
+};
+
+/* ===================== โหลดข้อมูล ===================== */
+function load(){
+  return api('adminData').then(function(j){
+    S.data=j;
+    $('whoami').textContent=j.user.name+' · ผู้ดูแลระบบ';
+    $('scLogin').classList.add('hide'); $('scMain').classList.remove('hide');
+    drawMap(); drawCpTable(); drawClTable(); drawRpTable(); drawHdTable(); drawCfTable(); fillCpSelect();
+  });
+}
+
+/* ===================== แท็บ ===================== */
+Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(b){
+  b.onclick=function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(x){x.classList.remove('on');});
+    b.classList.add('on');
+    ['cp','cl','rp','hd','cf'].forEach(function(t){ $('tab-'+t).classList.toggle('hide', t!==b.dataset.t); });
+    if(b.dataset.t==='cp' && S.map) setTimeout(function(){ S.map.invalidateSize(); },50);
+  };
+});
+
+/* ===================== แผนที่ ===================== */
+function drawMap(){
+  var cps=S.data.checkpoints.filter(function(c){return String(c.active).toUpperCase()==='TRUE';});
+  var center=cps.length?[parseFloat(cps[0].lat),parseFloat(cps[0].lng)]:[8.365087,98.749451];
+  if(!S.map){
+    S.map=L.map('map').setView(center,19);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:21,maxNativeZoom:19,attribution:'© OpenStreetMap'}).addTo(S.map);
+    S.layer=L.layerGroup().addTo(S.map);
+  }
+  S.layer.clearLayers();
+
+  S.data.checkpoints.forEach(function(c){
+    var lat=parseFloat(c.lat), lng=parseFloat(c.lng);
+    if(!lat||!lng) return;
+    var on=String(c.active).toUpperCase()==='TRUE';
+    var m=L.marker([lat,lng],{draggable:true,opacity:on?1:.45}).addTo(S.layer);
+    m.bindTooltip(c.code+' · '+c.name,{permanent:true,direction:'top',offset:[0,-10]});
+    L.circle([lat,lng],{radius:parseFloat(c.radiusM)||25,color:on?'#a78bfa':'#6b6b8a',
+      weight:1,fillOpacity:.10}).addTo(S.layer);
+    if(c.photoHeading!==''&&c.photoHeading!=null){
+      // ลากเส้นชี้ทิศกล้อง ยาวราว 25 เมตร (0 องศา = เหนือ, วนตามเข็ม)
+      var th=parseFloat(c.photoHeading)*Math.PI/180, m2=25/111320;
+      L.polyline([[lat,lng],[lat+Math.cos(th)*m2, lng+Math.sin(th)*m2/Math.cos(lat*Math.PI/180)]],
+        {color:'#f59e0b',weight:3}).addTo(S.layer);
+    }
+    m.on('click',function(){ editCp(c); });
+    m.on('dragend',function(e){
+      var p=e.target.getLatLng();
+      editCp(c);
+      $('f_lat').value=p.lat.toFixed(7); $('f_lng').value=p.lng.toFixed(7);
+      checkNear(); toast('ย้ายหมุดแล้ว — กดบันทึกเพื่อยืนยัน');
+    });
+  });
+
+  // เตือนจุดที่ใกล้กันเกินไป
+  var warns=[];
+  for(var i=0;i<cps.length;i++) for(var j=i+1;j<cps.length;j++){
+    var d=distM(parseFloat(cps[i].lat),parseFloat(cps[i].lng),parseFloat(cps[j].lat),parseFloat(cps[j].lng));
+    if(d<15) warns.push('"'+cps[i].name+'" กับ "'+cps[j].name+'" ห่างกัน '+d+' ม. — GPS แยกสองจุดนี้ไม่ออก');
+  }
+  $('mapWarn').innerHTML = warns.length
+    ? '<div class="banner bad">'+warns.map(esc).join('<br>')+'</div>' : '';
+}
+
+/* ===================== ฟอร์มจุดตรวจ ===================== */
+function editCp(c){
+  S.editing=c||null; S.refDataUrl='';
+  $('cpForm').classList.remove('hide');
+  $('cpFormTitle').textContent=c?('แก้ไข '+c.code+' · '+c.name):'เพิ่มจุดตรวจใหม่';
+  $('f_code').value   = c?c.code:'';
+  $('f_name').value   = c?c.name:'';
+  $('f_order').value  = c?c.orderNo:(S.data.checkpoints.length+1);
+  $('f_lat').value    = c?c.lat:'';
+  $('f_lng').value    = c?c.lng:'';
+  $('f_radius').value = c?(c.radiusM||25):25;
+  $('f_reqPhoto').checked = c?String(c.requirePhoto).toUpperCase()==='TRUE':false;
+  $('f_hint').value   = c?(c.photoHint||''):'';
+  $('f_heading').value= (c&&c.photoHeading!==''&&c.photoHeading!=null)?c.photoHeading:'';
+  $('f_tol').value    = c?(c.headingTol||45):45;
+  $('f_active').checked = c?String(c.active).toUpperCase()==='TRUE':true;
+  $('f_note').value   = c?(c.note||''):'';
+  var img=$('refPreview');
+  if(c&&c.refPhotoFileId){ img.src='https://drive.google.com/thumbnail?id='+c.refPhotoFileId+'&sz=w600'; img.classList.remove('hide'); }
+  else img.classList.add('hide');
+  headText(); checkNear();
+  $('cpForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+$('btnNewCp').onclick=function(){ editCp(null); };
+$('btnCloseCp').onclick=function(){ $('cpForm').classList.add('hide'); };
+$('f_heading').oninput=headText;
+function headText(){
+  var v=$('f_heading').value;
+  $('headText').textContent = v===''?'ไม่บังคับทิศ':(v+'° = หันไปทาง'+dirName(parseFloat(v)));
+}
+
+function checkNear(){
+  var lat=parseFloat($('f_lat').value), lng=parseFloat($('f_lng').value);
+  if(!lat||!lng){ $('cpWarn').innerHTML=''; return; }
+  var r=parseFloat($('f_radius').value)||25, w=[];
+  S.data.checkpoints.forEach(function(c){
+    if(S.editing&&c.cpId===S.editing.cpId) return;
+    if(String(c.active).toUpperCase()!=='TRUE') return;
+    var d=distM(lat,lng,parseFloat(c.lat),parseFloat(c.lng));
+    if(d<15) w.push('ห่างจาก "'+c.name+'" เพียง '+d+' ม. — GPS จะแยกไม่ออก ควรใช้ QR ช่วยที่จุดนี้');
+    else if(d < r+(parseFloat(c.radiusM)||25)) w.push('รัศมีซ้อนทับกับ "'+c.name+'" (ห่าง '+d+' ม.) ควรลดรัศมีลง');
+  });
+  $('cpWarn').innerHTML = w.length?'<div class="banner warn">'+w.map(esc).join('<br>')+'</div>':'';
+}
+['f_lat','f_lng','f_radius'].forEach(function(id){ $(id).oninput=checkNear; });
+
+/* เก็บพิกัดแบบเฉลี่ยหลายค่า ให้แม่นกว่าอ่านครั้งเดียว */
+$('btnUseGps').onclick=function(){
+  if(!navigator.geolocation) return toast('เครื่องนี้ไม่รองรับ GPS');
+  var pts=[], target=30, stat=$('gpsStat'), btn=this;
+  btn.disabled=true; stat.textContent='กำลังเก็บค่า 0/'+target;
+  var w=navigator.geolocation.watchPosition(function(p){
+    if(p.coords.accuracy>50) return;
+    pts.push([p.coords.latitude,p.coords.longitude,p.coords.accuracy]);
+    stat.textContent='กำลังเก็บค่า '+pts.length+'/'+target+' (±'+Math.round(p.coords.accuracy)+' ม.)';
+    if(pts.length>=target) done();
+  },function(){ stat.textContent='อ่านพิกัดไม่ได้'; btn.disabled=false; navigator.geolocation.clearWatch(w); },
+  {enableHighAccuracy:true,maximumAge:0,timeout:30000});
+  setTimeout(function(){ if(pts.length) done(); },35000);
+  function done(){
+    navigator.geolocation.clearWatch(w);
+    if(!pts.length){ btn.disabled=false; return; }
+    pts.sort(function(a,b){return a[2]-b[2];});
+    var best=pts.slice(0,Math.max(5,Math.round(pts.length*0.6)));
+    var la=best.reduce(function(s,p){return s+p[0];},0)/best.length;
+    var lo=best.reduce(function(s,p){return s+p[1];},0)/best.length;
+    $('f_lat').value=la.toFixed(7); $('f_lng').value=lo.toFixed(7);
+    stat.textContent='เก็บเสร็จ ใช้ '+best.length+' ค่าที่ดีที่สุด';
+    btn.disabled=false; checkNear();
+    if(S.map) S.map.setView([la,lo],20);
+  }
+};
+
+/* เข็มทิศ */
+$('btnReadHead').onclick=function(){
+  var attach=function(){
+    window.addEventListener('deviceorientationabsolute',onOri,true);
+    window.addEventListener('deviceorientation',onOri,true);
+    toast('หันเครื่องไปทางที่ต้องการ แล้วค่าจะอัปเดตเอง');
+  };
+  if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission)
+    DeviceOrientationEvent.requestPermission().then(function(r){
+      if(r==='granted') attach(); else toast('ไม่ได้รับอนุญาตให้อ่านเข็มทิศ'); }).catch(function(){ toast('อ่านเข็มทิศไม่ได้'); });
+  else attach();
+};
+function onOri(e){
+  var h=null;
+  if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading;
+  else if(e.alpha!=null) h=(360-e.alpha)%360;
+  if(h==null) return;
+  S.heading=Math.round(h);
+  $('dialArrow').style.transform='translate(-50%,-100%) rotate('+S.heading+'deg)';
+  $('f_heading').value=S.heading; headText();
+}
+
+/* รูปตัวอย่าง */
+$('f_ref').onchange=function(e){
+  var f=e.target.files[0]; if(!f) return;
+  var img=new Image(), url=URL.createObjectURL(f);
+  img.onload=function(){
+    var w=Math.min(1280,img.width), h=Math.round(img.height*(w/img.width));
+    var c=document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    S.refDataUrl=c.toDataURL('image/jpeg',0.72);
+    URL.revokeObjectURL(url);
+    $('refPreview').src=S.refDataUrl; $('refPreview').classList.remove('hide');
+    if(S.heading!=null && $('f_heading').value==='') { $('f_heading').value=S.heading; headText(); }
+    toast('เลือกรูปแล้ว จะอัปโหลดตอนกดบันทึก');
+  };
+  img.src=url;
+};
+
+$('btnSaveCp').onclick=function(){
+  var btn=this;
+  var item={
+    cpId:S.editing?S.editing.cpId:'', code:$('f_code').value.trim(), name:$('f_name').value.trim(),
+    lat:$('f_lat').value, lng:$('f_lng').value, radiusM:$('f_radius').value, orderNo:$('f_order').value,
+    requirePhoto:$('f_reqPhoto').checked?'TRUE':'FALSE',
+    photoHeading:$('f_heading').value===''?'':$('f_heading').value,
+    headingTol:$('f_tol').value, photoHint:$('f_hint').value,
+    refPhotoFileId:S.editing?(S.editing.refPhotoFileId||''):'',
+    active:$('f_active').checked?'TRUE':'FALSE', note:$('f_note').value
+  };
+  if(!item.name)  return toast('ใส่ชื่อจุดก่อน');
+  if(!parseFloat(item.lat)||!parseFloat(item.lng)) return toast('ยังไม่มีพิกัด — กดปุ่มใช้ตำแหน่งปัจจุบัน');
+
+  btn.disabled=true; btn.textContent='กำลังบันทึก…';
+  var step = S.refDataUrl
+    ? api('uploadRefPhoto',{cpId:item.cpId||'new',dataUrl:S.refDataUrl,
+        lat:item.lat,lng:item.lng,heading:item.photoHeading})
+        .then(function(r){ item.refPhotoFileId=r.fileId; })
+    : Promise.resolve();
+
+  step.then(function(){ return api('saveCheckpoint',{item:item}); })
+    .then(function(j){
+      toast((j.warnings&&j.warnings.length)?('บันทึกแล้ว — '+j.warnings[0]):'บันทึกจุดตรวจแล้ว', 4500);
+      S.refDataUrl=''; $('cpForm').classList.add('hide');
+      return load();
+    }).catch(function(e){ toast(e.message,4000); })
+    .then(function(){ btn.disabled=false; btn.textContent='บันทึกจุดตรวจ'; });
+};
+
+/* ===================== ตาราง ===================== */
+function drawCpTable(){
+  var h='<tr><th>รหัส</th><th>ชื่อจุด</th><th>พิกัด</th><th>รัศมี</th><th>รูป</th><th>ทิศ</th><th>สถานะ</th><th></th></tr>';
+  S.data.checkpoints.sort(function(a,b){return (+a.orderNo)-(+b.orderNo);}).forEach(function(c){
+    var on=String(c.active).toUpperCase()==='TRUE';
+    h+='<tr><td><strong>'+esc(c.code)+'</strong></td><td>'+esc(c.name)+'</td>'+
+       '<td class="muted" style="font-size:13px">'+esc(c.lat)+'<br>'+esc(c.lng)+'</td>'+
+       '<td>'+esc(c.radiusM)+' ม.</td>'+
+       '<td>'+(String(c.requirePhoto).toUpperCase()==='TRUE'?'บังคับ':'—')+'</td>'+
+       '<td>'+((c.photoHeading!==''&&c.photoHeading!=null)?esc(c.photoHeading)+'°':'—')+'</td>'+
+       '<td><span class="pill '+(on?'ok':'off')+'">'+(on?'ใช้งาน':'ปิด')+'</span></td>'+
+       '<td><button class="ghost sm" data-cp="'+esc(c.cpId)+'">แก้</button></td></tr>';
+  });
+  $('cpTable').innerHTML=h;
+  Array.prototype.forEach.call($('cpTable').querySelectorAll('[data-cp]'),function(b){
+    b.onclick=function(){
+      var c=S.data.checkpoints.filter(function(x){return x.cpId===b.dataset.cp;})[0];
+      if(c) editCp(c);
+    };
+  });
+}
+
+function fillCpSelect(){
+  var s=$('cl_cp'); s.innerHTML='<option value="ALL">ทุกจุด</option>';
+  S.data.checkpoints.forEach(function(c){
+    var o=document.createElement('option'); o.value=c.cpId; o.textContent=c.code+' · '+c.name; s.appendChild(o);
+  });
+}
+
+function drawClTable(){
+  var h='<tr><th>ลำดับ</th><th>คำถาม</th><th>ใช้กับ</th><th>บังคับ</th><th>สถานะ</th><th></th></tr>';
+  S.data.checklist.sort(function(a,b){return (+a.orderNo)-(+b.orderNo);}).forEach(function(i){
+    var cp=S.data.checkpoints.filter(function(x){return x.cpId===i.cpId;})[0];
+    var on=String(i.active).toUpperCase()==='TRUE';
+    h+='<tr><td>'+esc(i.orderNo)+'</td><td>'+esc(i.label)+'</td>'+
+       '<td>'+(i.cpId==='ALL'?'ทุกจุด':(cp?esc(cp.code+' · '+cp.name):esc(i.cpId)))+'</td>'+
+       '<td>'+(String(i.required).toUpperCase()==='TRUE'?'ใช่':'—')+'</td>'+
+       '<td><span class="pill '+(on?'ok':'off')+'">'+(on?'ใช้งาน':'ปิด')+'</span></td>'+
+       '<td><button class="ghost sm" data-cl="'+esc(i.itemId)+'">แก้</button> '+
+       '<button class="ghost sm" data-cltog="'+esc(i.itemId)+'">'+(on?'ปิด':'เปิด')+'</button></td></tr>';
+  });
+  $('clTable').innerHTML=h;
+  Array.prototype.forEach.call($('clTable').querySelectorAll('[data-cl]'),function(b){
+    b.onclick=function(){
+      var i=S.data.checklist.filter(function(x){return x.itemId===b.dataset.cl;})[0];
+      $('cl_id').value=i.itemId; $('cl_cp').value=i.cpId; $('cl_label').value=i.label;
+      $('cl_order').value=i.orderNo; $('cl_req').checked=String(i.required).toUpperCase()==='TRUE';
+      window.scrollTo({top:0,behavior:'smooth'});
+    };
+  });
+  Array.prototype.forEach.call($('clTable').querySelectorAll('[data-cltog]'),function(b){
+    b.onclick=function(){
+      var i=S.data.checklist.filter(function(x){return x.itemId===b.dataset.cltog;})[0];
+      var on=String(i.active).toUpperCase()==='TRUE';
+      api('saveChecklist',{item:Object.assign({},i,{active:on?'FALSE':'TRUE'})})
+        .then(load).then(function(){ toast('อัปเดตแล้ว'); });
+    };
+  });
+}
+$('btnSaveCl').onclick=function(){
+  var label=$('cl_label').value.trim(); if(!label) return toast('ใส่ข้อความคำถาม');
+  api('saveChecklist',{item:{itemId:$('cl_id').value,cpId:$('cl_cp').value,label:label,
+    type:'OK_NG',required:$('cl_req').checked?'TRUE':'FALSE',orderNo:$('cl_order').value,active:'TRUE'}})
+  .then(function(){ $('cl_id').value=''; $('cl_label').value=''; return load(); })
+  .then(function(){ toast('บันทึกแล้ว'); }).catch(function(e){ toast(e.message); });
+};
+
+function drawRpTable(){
+  var h='<tr><th>ประเภทวัน</th><th>รอบที่</th><th>เวลา</th><th>เปิดก่อน</th><th>ปิดหลัง</th><th>สถานะ</th><th></th></tr>';
+  S.data.roundPlan.sort(function(a,b){
+    return a.dayType===b.dayType ? (+a.roundNo)-(+b.roundNo) : (a.dayType<b.dayType?1:-1);
+  }).forEach(function(p){
+    var on=String(p.active).toUpperCase()==='TRUE';
+    var t=String(p.schedTime); if(t.indexOf('T')>0) t=t.split('T')[1].substring(0,5);
+    h+='<tr><td>'+(p.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+'</td><td>'+esc(p.roundNo)+'</td>'+
+       '<td><strong>'+esc(t)+'</strong></td><td>'+esc(p.graceEarlyMin)+' น.</td><td>'+esc(p.graceLateMin)+' น.</td>'+
+       '<td><span class="pill '+(on?'ok':'off')+'">'+(on?'ใช้งาน':'ปิด')+'</span></td>'+
+       '<td><button class="ghost sm" data-rp="'+esc(p.planId)+'">แก้</button> '+
+       '<button class="ghost sm" data-rptog="'+esc(p.planId)+'">'+(on?'ปิด':'เปิด')+'</button></td></tr>';
+  });
+  $('rpTable').innerHTML=h;
+  Array.prototype.forEach.call($('rpTable').querySelectorAll('[data-rp]'),function(b){
+    b.onclick=function(){
+      var p=S.data.roundPlan.filter(function(x){return x.planId===b.dataset.rp;})[0];
+      var t=String(p.schedTime); if(t.indexOf('T')>0) t=t.split('T')[1].substring(0,5);
+      $('rp_id').value=p.planId; $('rp_type').value=p.dayType; $('rp_no').value=p.roundNo;
+      $('rp_time').value=t; $('rp_early').value=p.graceEarlyMin; $('rp_late').value=p.graceLateMin;
+      window.scrollTo({top:0,behavior:'smooth'});
+    };
+  });
+  Array.prototype.forEach.call($('rpTable').querySelectorAll('[data-rptog]'),function(b){
+    b.onclick=function(){
+      var p=S.data.roundPlan.filter(function(x){return x.planId===b.dataset.rptog;})[0];
+      var on=String(p.active).toUpperCase()==='TRUE';
+      var t=String(p.schedTime); if(t.indexOf('T')>0) t=t.split('T')[1].substring(0,5);
+      api('saveRoundPlan',{item:Object.assign({},p,{schedTime:t,active:on?'FALSE':'TRUE'})})
+        .then(load).then(function(){ toast('อัปเดตแล้ว'); });
+    };
+  });
+}
+$('btnSaveRp').onclick=function(){
+  api('saveRoundPlan',{item:{planId:$('rp_id').value,dayType:$('rp_type').value,roundNo:$('rp_no').value,
+    schedTime:$('rp_time').value,graceEarlyMin:$('rp_early').value,graceLateMin:$('rp_late').value,active:'TRUE'}})
+  .then(function(){ $('rp_id').value=''; return load(); })
+  .then(function(){ toast('บันทึกรอบแล้ว'); }).catch(function(e){ toast(e.message); });
+};
+
+function drawHdTable(){
+  var h='<tr><th>วันที่</th><th>ชื่อ</th><th>ประเภท</th><th></th></tr>';
+  S.data.holidays.sort(function(a,b){return a.date<b.date?-1:1;}).forEach(function(d){
+    h+='<tr><td><strong>'+esc(d.date)+'</strong></td><td>'+esc(d.name)+'</td><td>'+esc(d.kind)+'</td>'+
+       '<td><button class="ghost sm" data-hd="'+esc(d.date)+'">ลบ</button></td></tr>';
+  });
+  $('hdTable').innerHTML=h;
+  Array.prototype.forEach.call($('hdTable').querySelectorAll('[data-hd]'),function(b){
+    b.onclick=function(){
+      if(!confirm('ลบวันหยุด '+b.dataset.hd+' ?')) return;
+      api('saveHoliday',{item:{date:b.dataset.hd},remove:true}).then(load).then(function(){toast('ลบแล้ว');});
+    };
+  });
+}
+$('btnSaveHd').onclick=function(){
+  var d=$('hd_date').value; if(!d) return toast('เลือกวันที่');
+  api('saveHoliday',{item:{date:d,name:$('hd_name').value,kind:$('hd_kind').value}})
+    .then(function(){ $('hd_name').value=''; return load(); })
+    .then(function(){ toast('เพิ่มวันหยุดแล้ว'); }).catch(function(e){ toast(e.message); });
+};
+
+function drawCfTable(){
+  var h='<tr><th>คีย์</th><th>ค่า</th><th>คำอธิบาย</th><th></th></tr>';
+  S.data.config.forEach(function(c){
+    h+='<tr><td><code>'+esc(c.key)+'</code></td>'+
+       '<td><input value="'+esc(c.value)+'" data-k="'+esc(c.key)+'"></td>'+
+       '<td class="muted">'+esc(c.note)+'</td>'+
+       '<td><button class="ghost sm" data-cf="'+esc(c.key)+'">บันทึก</button></td></tr>';
+  });
+  $('cfTable').innerHTML=h;
+  Array.prototype.forEach.call($('cfTable').querySelectorAll('[data-cf]'),function(b){
+    b.onclick=function(){
+      var inp=$('cfTable').querySelector('[data-k="'+b.dataset.cf+'"]');
+      api('saveConfig',{key:b.dataset.cf,value:inp.value})
+        .then(function(){ toast('บันทึกแล้ว'); }).catch(function(e){ toast(e.message); });
+    };
+  });
+}
+
+/* ===================== เริ่มทำงาน ===================== */
+(function(){
+  var t=''; try{ t=localStorage.getItem('ol_admin_token')||''; }catch(e){}
+  if(!t) return;
+  S.token=t; load().catch(function(){ S.token=''; });
+})();
+</script>
+</body>
+</html>
