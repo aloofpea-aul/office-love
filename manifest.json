@@ -1,0 +1,26 @@
+{
+  "name": "Office Love — เดินตรวจความปลอดภัย กฟส.อ่าวลึก",
+  "short_name": "Office Love",
+  "description": "ระบบเดินตรวจความปลอดภัยสำนักงานสำหรับพนักงานรักษาความปลอดภัย",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#12101a",
+  "theme_color": "#5b2d8e",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%235b2d8e'/%3E%3Cpath d='M96 34 L146 54 v42c0 34-21 55-50 62-29-7-50-28-50-62V54z' fill='%23c4b5fd'/%3E%3Cpath d='M78 96 l12 14 26-30' stroke='%235b2d8e' stroke-width='11' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='108' fill='%235b2d8e'/%3E%3Cpath d='M256 90 L390 144 v112c0 90-56 146-134 166-78-20-134-76-134-166V144z' fill='%23c4b5fd'/%3E%3Cpath d='M208 256 l32 37 69-80' stroke='%235b2d8e' stroke-width='29' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
