@@ -278,13 +278,28 @@ var S={ token:'', data:null, editing:null, map:null, layer:null, heading:null, r
 
 function toast(m,ms){var t=$('toast');t.textContent=m;t.classList.remove('hide');
   clearTimeout(t._t);t._t=setTimeout(function(){t.classList.add('hide');},ms||2800);}
-function api(action,body){
+function apiFetch(action,body,retry){
   return fetch(API,{method:'POST',redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body:JSON.stringify(Object.assign({action:action,token:S.token},body||{}))})
-  .then(function(r){return r.json();}).then(function(j){
-    if(!j.ok) throw new Error(j.error||'ผิดพลาด'); return j; });
+  .then(function(r){return r.text();}).then(function(txt){
+    var j;
+    try{ j=JSON.parse(txt); }
+    catch(e){
+      if(!retry) return new Promise(function(res){setTimeout(res,1500);})
+                        .then(function(){ return apiFetch(action,body,true); });
+      throw new Error('เซิร์ฟเวอร์ยังไม่พร้อม กรุณากดอีกครั้ง');
+    }
+    if(!j.ok) throw new Error(j.error||'ผิดพลาด');
+    return j;
+  }, function(){
+    if(!retry) return new Promise(function(res){setTimeout(res,1500);})
+                      .then(function(){ return apiFetch(action,body,true); });
+    throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่');
+  });
 }
+function api(action,body){ return apiFetch(action,body,false); }
+function isAuthErr(e){ return /เซสชัน|สิทธิ์|เข้าสู่ระบบใหม่/.test(e && e.message || ''); }
 function dirName(d){var n=['เหนือ','ต.อ.เฉียงเหนือ','ตะวันออก','ต.อ.เฉียงใต้','ใต้','ต.ต.เฉียงใต้','ตะวันตก','ต.ต.เฉียงเหนือ'];
   return n[Math.round(((d%360)+360)%360/45)%8];}
 function distM(a1,o1,a2,o2){var R=6371000,r=Math.PI/180,dp=(a2-a1)*r,dl=(o2-o1)*r;
@@ -731,7 +746,9 @@ $('btnNotifyTest').onclick=function(){
 (function(){
   var t=''; try{ t=localStorage.getItem('ol_admin_token')||''; }catch(e){}
   if(!t) return;
-  S.token=t; load().catch(function(){ S.token=''; });
+  S.token=t;
+  load().catch(function(e){ if(isAuthErr(e)){ S.token='';
+    try{ localStorage.removeItem('ol_admin_token'); }catch(_){} } });
 })();
 </script>
 </body>
