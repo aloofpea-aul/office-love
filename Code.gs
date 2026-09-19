@@ -94,6 +94,9 @@ function _route(req) {
       case 'incidentUpdate'  : return apiIncidentUpdate(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'checkinDetail'   : return apiCheckinDetail(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'trend'           : return apiTrend(auth(req, ['SUPERVISOR','ADMIN']), req);
+      case 'incidentDetail'  : return apiIncidentDetail(auth(req, ['SUPERVISOR','ADMIN']), req);
+      case 'monthlyReport'   : return apiMonthlyReport(auth(req, ['SUPERVISOR','ADMIN']), req);
+      case 'exportCsv'       : return apiExportCsv(auth(req, ['SUPERVISOR','ADMIN']), req);
 
       // --- ผู้ดูแล ---
       case 'adminData'       : return apiAdminData(auth(req, ['ADMIN']));
@@ -103,6 +106,7 @@ function _route(req) {
       case 'saveHoliday'     : return apiSaveHoliday(auth(req, ['ADMIN']), req);
       case 'saveConfig'      : return apiSaveConfig(auth(req, ['ADMIN']), req);
       case 'uploadRefPhoto'  : return apiUploadRefPhoto(auth(req, ['ADMIN']), req);
+      case 'lockMonth'       : return apiLockMonth(auth(req, ['ADMIN']), req);
 
       default: return err('ไม่รู้จักคำสั่ง: ' + action);
     }
@@ -223,6 +227,31 @@ function isHoliday(dateStr) {
   }
   var dow = new Date(dateStr + 'T12:00:00').getDay();   // 0=อา 6=ส
   return dow === 0 || dow === 6;
+}
+
+function monthOf(workDate) { return String(workDate).substring(0, 7); }
+
+function isLocked(month) { return String(cfgGet('LOCK_' + month, '')).toUpperCase() === 'TRUE'; }
+
+/** เดือนที่ปิดแล้วห้ามเขียนทับ — ใช้เป็นหลักฐานประกอบการตรวจรับงานจ้าง */
+function assertUnlocked(workDate) {
+  var m = monthOf(workDate);
+  if (isLocked(m)) throw new Error('เดือน ' + m + ' ปิดงวดแล้ว แก้ไขข้อมูลย้อนหลังไม่ได้');
+}
+
+/** รายชื่อผู้ที่มอบหมายงานได้ */
+function staffList() {
+  var out = [];
+  ['Admins', 'Members'].forEach(function (tab) {
+    readPlatform(tab).forEach(function (r) {
+      var n = String(pick(r, ['Name','ชื่อ-สกุล','ชื่อ','FullName']) || '').trim();
+      if (!n) return;
+      var st = String(pick(r, ['Status','สถานะ'])).trim().toUpperCase();
+      if (st && ['INACTIVE','DISABLED','ปิด','ระงับ','FALSE','0'].indexOf(st) >= 0) return;
+      if (out.indexOf(n) < 0) out.push(n);
+    });
+  });
+  return out;
 }
 
 function audit(userId, action, refType, refId, before, after) {
@@ -547,6 +576,7 @@ function apiCheckin(me, req) {
     var rounds = readTable('Rounds'), round = null;
     for (var i = 0; i < rounds.length; i++) if (String(rounds[i].roundId) === roundId) round = rounds[i];
     if (!round) return err('ไม่พบรอบเดินตรวจนี้');
+    assertUnlocked(dstr(round.workDate));
 
     // กันเช็คอินซ้ำจุดเดิมในรอบเดียวกัน
     var already = readTable('Checkins').some(function (c) {
@@ -605,6 +635,7 @@ function apiCheckin(me, req) {
 }
 
 function apiIncident(me, req) {
+  assertUnlocked(workDateOf(new Date()));
   var id = uid();
   appendRow('Incidents', {
     incId: id, ts: nowIso(), roundId: String(req.roundId || ''), cpId: String(req.cpId || ''),
@@ -772,16 +803,182 @@ function apiTrend(me, req) {
 function apiIncidentUpdate(me, req) {
   var rows = readTable('Incidents');
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i].incId) === String(req.incId)) {
-      var patch = { status: String(req.status || rows[i].status),
-                    assignedTo: String(req.assignedTo || rows[i].assignedTo) };
-      if (String(req.status) === 'CLOSED') { patch.closedAt = nowIso(); patch.closeNote = String(req.closeNote || ''); }
-      updateRow('Incidents', rows[i]._row, patch);
-      audit(me.userId, 'INCIDENT_UPDATE', 'INCIDENT', String(req.incId), null, patch);
-      return ok({});
-    }
+    if (String(rows[i].incId) !== String(req.incId)) continue;
+    assertUnlocked(workDateOf(parseIso(rows[i].ts)));
+
+    var patch = { status: String(req.status || rows[i].status),
+                  assignedTo: (req.assignedTo === undefined) ? String(rows[i].assignedTo || '') : String(req.assignedTo) };
+    if (String(req.status) === 'CLOSED') { patch.closedAt = nowIso(); patch.closeNote = String(req.closeNote || ''); }
+
+    (req.photos || []).forEach(function (p) {
+      savePhoto(p.dataUrl, 'INCIDENT', String(req.incId), {
+        lat: num(p.lat), lng: num(p.lng), heading: p.heading, headingOk: '', phase: 'หลังแก้ไข'
+      });
+    });
+
+    updateRow('Incidents', rows[i]._row, patch);
+    audit(me.userId, 'INCIDENT_UPDATE', 'INCIDENT', String(req.incId), cleanRow(rows[i]), patch);
+    return ok({});
   }
   return err('ไม่พบรายการแจ้งเหตุ');
+}
+
+function apiIncidentDetail(me, req) {
+  var id = String(req.incId || ''), inc = null;
+  readTable('Incidents').forEach(function (i) { if (String(i.incId) === id) inc = i; });
+  if (!inc) return err('ไม่พบรายการแจ้งเหตุ');
+
+  var cpName = '';
+  readTable('Checkpoints').forEach(function (c) { if (String(c.cpId) === String(inc.cpId)) cpName = String(c.name); });
+
+  var photos = readTable('Attachments')
+    .filter(function (a) { return String(a.refType) === 'INCIDENT' && String(a.refId) === id; })
+    .map(function (a) { return { url: String(a.url), phase: String(a.phase || ''), takenAt: String(a.takenAt) }; });
+
+  return ok({
+    incident: {
+      incId: id, ts: String(inc.ts), title: String(inc.title), detail: String(inc.detail || ''),
+      category: String(inc.category), severity: String(inc.severity), status: String(inc.status),
+      userName: String(inc.userName), cpName: cpName, lat: num(inc.lat), lng: num(inc.lng),
+      assignedTo: String(inc.assignedTo || ''), closedAt: String(inc.closedAt || ''),
+      closeNote: String(inc.closeNote || ''), locked: isLocked(monthOf(workDateOf(parseIso(inc.ts))))
+    },
+    photos: photos, staff: staffList()
+  });
+}
+
+// ===========================================================================
+// รายงานรายเดือน — ใช้ประกอบการตรวจรับงานจ้าง รปภ.
+// ===========================================================================
+function apiMonthlyReport(me, req) {
+  var month = String(req.month || fmt(new Date(), 'yyyy-MM'));
+
+  var rounds = readTable('Rounds').filter(function (r) { return monthOf(dstr(r.workDate)) === month; });
+  var ids = {};
+  rounds.forEach(function (r) { ids[String(r.roundId)] = true; });
+  var checkins = readTable('Checkins').filter(function (c) { return ids[String(c.roundId)]; });
+
+  var byDate = {}, byRound = {}, byGuard = {};
+  function guard(g) {
+    if (!byGuard[g]) byGuard[g] = { name: g, checkins: 0, flagged: 0, override: 0, shifts: 0, hours: 0 };
+    return byGuard[g];
+  }
+
+  rounds.forEach(function (r) {
+    var d = dstr(r.workDate), st = String(r.status), no = String(num(r.roundNo));
+    if (!byDate[d]) byDate[d] = { workDate: d, dayType: String(r.dayType), total: 0, complete: 0,
+                                  partial: 0, missed: 0, onTime: 0, started: 0, points: 0, pointsTotal: 0 };
+    if (!byRound[no]) byRound[no] = { roundNo: num(r.roundNo), total: 0, complete: 0, partial: 0, missed: 0 };
+    var b = byDate[d], q = byRound[no];
+    b.total++; q.total++;
+    b.points += num(r.pointsDone); b.pointsTotal += num(r.pointsTotal);
+    if (st === 'COMPLETE')      { b.complete++; q.complete++; }
+    else if (st === 'PARTIAL')  { b.partial++;  q.partial++;  }
+    else if (st === 'MISSED')   { b.missed++;   q.missed++;   }
+    if (r.startedAt) {
+      b.started++;
+      if (parseIso(r.startedAt).getTime() - parseIso(r.schedAt).getTime() <= 15 * 60000) b.onTime++;
+    }
+  });
+
+  checkins.forEach(function (c) {
+    var g = guard(String(c.userName || c.userId));
+    g.checkins++;
+    if (String(c.verifyResult) !== 'PASS') g.flagged++;
+    if (c.overrideReason) g.override++;
+  });
+
+  readTable('Shifts').filter(function (s) { return monthOf(dstr(s.workDate)) === month; })
+    .forEach(function (s) {
+      var g = guard(String(s.guardName || s.guardUserId));
+      g.shifts++;
+      if (s.checkInAt && s.checkOutAt) {
+        var h = (parseIso(s.checkOutAt).getTime() - parseIso(s.checkInAt).getTime()) / 3600000;
+        if (h > 0 && h < 24) g.hours = Math.round((g.hours + h) * 10) / 10;
+      }
+    });
+
+  var incidents = readTable('Incidents')
+    .filter(function (i) { return monthOf(workDateOf(parseIso(i.ts))) === month; })
+    .map(function (i) {
+      return { incId: String(i.incId), ts: String(i.ts), title: String(i.title),
+               category: String(i.category), severity: String(i.severity), status: String(i.status),
+               userName: String(i.userName), assignedTo: String(i.assignedTo || ''),
+               closedAt: String(i.closedAt || ''), closeNote: String(i.closeNote || '') };
+    }).sort(function (a, b) { return a.ts < b.ts ? -1 : 1; });
+
+  var complete = rounds.filter(function (r) { return String(r.status) === 'COMPLETE'; }).length;
+  var missed   = rounds.filter(function (r) { return String(r.status) === 'MISSED'; }).length;
+  var partial  = rounds.filter(function (r) { return String(r.status) === 'PARTIAL'; }).length;
+  var started  = rounds.filter(function (r) { return !!r.startedAt; });
+  var onTime   = started.filter(function (r) {
+    return parseIso(r.startedAt).getTime() - parseIso(r.schedAt).getTime() <= 15 * 60000; }).length;
+  var pts      = rounds.reduce(function (a, r) { return a + num(r.pointsDone); }, 0);
+  var ptsTotal = rounds.reduce(function (a, r) { return a + num(r.pointsTotal); }, 0);
+
+  return ok({
+    user: { userId: me.userId, name: me.name, role: me.role },
+    month: month,
+    locked: isLocked(month),
+    generatedAt: nowIso(),
+    generatedBy: me.name,
+    summary: {
+      rounds: rounds.length, complete: complete, partial: partial, missed: missed,
+      started: started.length, onTime: onTime,
+      pctComplete: rounds.length ? Math.round(complete / rounds.length * 1000) / 10 : 0,
+      pctOnTime:   started.length ? Math.round(onTime / started.length * 1000) / 10 : 0,
+      pctPoints:   ptsTotal ? Math.round(pts / ptsTotal * 1000) / 10 : 0,
+      checkins: checkins.length, points: pts, pointsTotal: ptsTotal,
+      incidents: incidents.length,
+      incidentsOpen: incidents.filter(function (i) { return i.status !== 'CLOSED'; }).length,
+      photos: readTable('Attachments').filter(function (a) {
+        return String(a.takenAt).indexOf(month) === 0; }).length
+    },
+    byDate:  Object.keys(byDate).sort().map(function (k) { return byDate[k]; }),
+    byRound: Object.keys(byRound).sort(function (a, b) { return num(a) - num(b); })
+                   .map(function (k) { return byRound[k]; }),
+    byGuard: Object.keys(byGuard).sort().map(function (k) { return byGuard[k]; }),
+    incidents: incidents
+  });
+}
+
+/** ดาวน์โหลดข้อมูลดิบรายเดือนเป็น CSV */
+function apiExportCsv(me, req) {
+  var month = String(req.month || fmt(new Date(), 'yyyy-MM'));
+  var table = String(req.table || 'Rounds');
+  if (['Rounds','Checkins','Incidents','Shifts'].indexOf(table) < 0) return err('ไม่รองรับตารางนี้');
+
+  var rows = readTable(table);
+  if (table === 'Rounds' || table === 'Shifts') {
+    rows = rows.filter(function (r) { return monthOf(dstr(r.workDate)) === month; });
+  } else if (table === 'Incidents') {
+    rows = rows.filter(function (r) { return monthOf(workDateOf(parseIso(r.ts))) === month; });
+  } else {
+    var ids2 = {};
+    readTable('Rounds').forEach(function (r) {
+      if (monthOf(dstr(r.workDate)) === month) ids2[String(r.roundId)] = true; });
+    rows = rows.filter(function (c) { return ids2[String(c.roundId)]; });
+  }
+
+  var head = SCHEMA[table];
+  var esc = function (v) {
+    var s = (v instanceof Date) ? toIso(v) : String(v === undefined || v === null ? '' : v);
+    return '"' + s.replace(/"/g, '""') + '"';
+  };
+  var lines = [head.map(esc).join(',')];
+  rows.forEach(function (r) { lines.push(head.map(function (h) { return esc(r[h]); }).join(',')); });
+  return ok({ table: table, month: month, rows: rows.length, csv: lines.join('\r\n') });
+}
+
+/** ปิด/เปิดงวดเดือน — ปิดแล้วห้ามเขียนข้อมูลของเดือนนั้นอีก */
+function apiLockMonth(me, req) {
+  var month = String(req.month || '');
+  if (!/^\d{4}-\d{2}$/.test(month)) return err('รูปแบบเดือนต้องเป็น YYYY-MM');
+  var lock = (String(req.lock) !== 'false' && req.lock !== false);
+  apiSaveConfig(me, { key: 'LOCK_' + month, value: lock ? 'TRUE' : 'FALSE',
+                      note: 'ปิดงวดเดือน ' + month + ' — ตั้งโดยระบบรายงาน' });
+  audit(me.userId, lock ? 'MONTH_LOCK' : 'MONTH_UNLOCK', 'MONTH', month);
+  return ok({ month: month, locked: lock });
 }
 
 // ===========================================================================
