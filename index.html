@@ -474,6 +474,11 @@ function paintShift(){
   }
 }
 
+/* ป้ายเวลาของรอบ — รอบยืดหยุ่นแสดงเป็นช่วงเวลาแทนเวลานัด */
+function rlabel(r){
+  return r.flex ? ('ช่วง '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น.') : (hhmm(r.schedAt)+' น.');
+}
+
 function roundState(r){
   var now=Date.now(), open=new Date(r.openAt).getTime(), close=new Date(r.closeAt).getTime();
   if(r.status==='COMPLETE') return {k:'ok', t:'ครบแล้ว'};
@@ -481,6 +486,11 @@ function roundState(r){
   if(r.status==='PARTIAL')  return {k:'bad',t:'ไม่ครบจุด'};
   if(now<open)              return {k:'',   t:'ยังไม่ถึงเวลา'};
   if(now>close)             return {k:'bad',t:'เลยเวลา'};
+  if(r.flex){
+    var left=Math.round((close-now)/60000);
+    if(left<=60) return {k:'warn', t:'เหลือ '+left+' นาที'};
+    return {k:'live', t:'เดินได้ · เหลือ '+Math.floor(left/60)+' ชม.'};
+  }
   var late=now-new Date(r.schedAt).getTime();
   if(late>15*60000)         return {k:'warn',t:'สาย '+Math.round(late/60000)+' นาที'};
   return {k:'live', t:'ถึงเวลาแล้ว'};
@@ -495,7 +505,7 @@ function paintRounds(){
     var dots='';
     for(var i=0;i<r.pointsTotal;i++) dots+='<span class="dot'+(i<r.pointsDone?' on':'')+'"></span>';
     div.innerHTML='<div class="no">'+r.roundNo+'</div>'+
-      '<div class="grow"><strong>'+hhmm(r.schedAt)+' น.</strong>'+
+      '<div class="grow"><strong>'+rlabel(r)+'</strong>'+
       '<div class="dots">'+dots+'</div></div>'+
       '<span class="pill '+st.k+'">'+st.t+'</span>';
     div.onclick=function(){ openRound(r); };
@@ -546,23 +556,36 @@ function tickReminder(){
   var r=nextRound();
   if(!r){ box.innerHTML='<div class="banner ok">เดินครบทุกรอบของวันนี้แล้ว</div>'; return; }
 
-  var diff = Math.round((new Date(r.schedAt).getTime()-Date.now())/60000);
-  var kind = diff>0 ? 'warn' : (diff<-15 ? 'bad' : 'ok');
-  var txt  = diff>0 ? ('รอบถัดไป รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. · อีก '+diff+' นาที')
-                    : ('ถึงเวลารอบที่ '+r.roundNo+' ('+hhmm(r.schedAt)+' น.) แล้ว'+(diff<-15?(' · สาย '+(-diff)+' นาที'):''));
   var bell = ('Notification' in window) && Notification.permission!=='granted'
     ? '<button class="btn-ghost btn-sm" id="btnBell" style="margin-top:8px">🔔 เปิดแจ้งเตือนบนเครื่องนี้</button>' : '';
-  box.innerHTML='<div class="banner '+kind+'">⏰ '+txt+'</div>'+bell;
-  if($('btnBell')) $('btnBell').onclick=askNotif;
 
-  var before = (S.boot && S.boot.remindBeforeMin) || 10;
-  if(diff>0 && diff<=before && !NOTIF.sent['b'+r.roundId]){
-    NOTIF.sent['b'+r.roundId]=true;
-    fireNotif('ใกล้ถึงรอบเดินตรวจ','รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. · อีก '+diff+' นาที','ol-b-'+r.roundId);
-  }
-  if(diff<=0 && !NOTIF.sent['s'+r.roundId]){
-    NOTIF.sent['s'+r.roundId]=true;
-    fireNotif('ถึงเวลาเดินตรวจ','รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. — เริ่มได้เลย','ol-s-'+r.roundId);
+  if(r.flex){
+    var left = Math.round((new Date(r.closeAt).getTime()-Date.now())/60000);
+    var leftTxt = left>=60 ? (Math.floor(left/60)+' ชม. '+(left%60)+' นาที') : (left+' นาที');
+    box.innerHTML='<div class="banner '+(left<=60?'bad':'warn')+'">⏰ รอบที่ '+r.roundNo+
+      ' (ยืดหยุ่น '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น.) · เหลือ '+leftTxt+'</div>'+bell;
+    if($('btnBell')) $('btnBell').onclick=askNotif;
+    if(left<=60 && !NOTIF.sent['f'+r.roundId]){
+      NOTIF.sent['f'+r.roundId]=true;
+      fireNotif('ใกล้หมดช่วงเดินตรวจ','รอบที่ '+r.roundNo+' เหลือเวลาอีก '+leftTxt+' — ยังเดินไม่ครบ','ol-f-'+r.roundId);
+    }
+  }else{
+    var diff = Math.round((new Date(r.schedAt).getTime()-Date.now())/60000);
+    var kind = diff>0 ? 'warn' : (diff<-15 ? 'bad' : 'ok');
+    var txt  = diff>0 ? ('รอบถัดไป รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. · อีก '+diff+' นาที')
+                      : ('ถึงเวลารอบที่ '+r.roundNo+' ('+hhmm(r.schedAt)+' น.) แล้ว'+(diff<-15?(' · สาย '+(-diff)+' นาที'):''));
+    box.innerHTML='<div class="banner '+kind+'">⏰ '+txt+'</div>'+bell;
+    if($('btnBell')) $('btnBell').onclick=askNotif;
+
+    var before = (S.boot && S.boot.remindBeforeMin) || 10;
+    if(diff>0 && diff<=before && !NOTIF.sent['b'+r.roundId]){
+      NOTIF.sent['b'+r.roundId]=true;
+      fireNotif('ใกล้ถึงรอบเดินตรวจ','รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. · อีก '+diff+' นาที','ol-b-'+r.roundId);
+    }
+    if(diff<=0 && !NOTIF.sent['s'+r.roundId]){
+      NOTIF.sent['s'+r.roundId]=true;
+      fireNotif('ถึงเวลาเดินตรวจ','รอบที่ '+r.roundNo+' เวลา '+hhmm(r.schedAt)+' น. — เริ่มได้เลย','ol-s-'+r.roundId);
+    }
   }
 
   // ดึงรอบใหม่ทุก 5 นาที เผื่อมีการเช็คอินจากเครื่องอื่นหรือรอบเปลี่ยนสถานะ
@@ -583,12 +606,14 @@ function startReminder(){
 /* ========================= รอบ ========================= */
 function openRound(r){
   S.round=r;
-  $('roundTitle').textContent='รอบ '+r.roundNo+' · '+hhmm(r.schedAt)+' น.';
+  $('roundTitle').textContent='รอบ '+r.roundNo+' · '+rlabel(r);
   var st=roundState(r);
   var b=$('roundBanner');
   if(st.k==='bad')       b.innerHTML='<div class="banner bad">รอบนี้'+st.t+' — บันทึกได้แต่จะถูกทำเครื่องหมายไว้</div>';
-  else if(st.k==='warn') b.innerHTML='<div class="banner warn">'+st.t+' รีบเดินให้ครบก่อนปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
   else if(st.k==='')     b.innerHTML='<div class="banner warn">รอบนี้เริ่มได้ตั้งแต่ '+hhmm(r.openAt)+' น.</div>';
+  else if(r.flex)        b.innerHTML='<div class="banner '+(st.k==='warn'?'warn':'ok')+'">รอบยืดหยุ่น — '+
+                           'เดินเมื่อไหร่ก็ได้ภายใน '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น. ('+st.t+')</div>';
+  else if(st.k==='warn') b.innerHTML='<div class="banner warn">'+st.t+' รีบเดินให้ครบก่อนปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
   else                   b.innerHTML='<div class="banner ok">เดินได้เลย ปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
   paintCps(); show('scRound');
 }
