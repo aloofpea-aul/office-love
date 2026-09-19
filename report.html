@@ -158,13 +158,28 @@ var S={ token:'', me:null, data:null, month:'' };
 
 function toast(m,ms){var t=$('toast');t.textContent=m;t.classList.remove('hide');
   clearTimeout(t._t);t._t=setTimeout(function(){t.classList.add('hide');},ms||2800);}
-function api(action,body){
+function apiFetch(action,body,retry){
   return fetch(API,{method:'POST',redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body:JSON.stringify(Object.assign({action:action,token:S.token},body||{}))})
-  .then(function(r){return r.json();}).then(function(j){
-    if(!j.ok) throw new Error(j.error||'ผิดพลาด'); return j; });
+  .then(function(r){return r.text();}).then(function(txt){
+    var j;
+    try{ j=JSON.parse(txt); }
+    catch(e){
+      if(!retry) return new Promise(function(res){setTimeout(res,1500);})
+                        .then(function(){ return apiFetch(action,body,true); });
+      throw new Error('เซิร์ฟเวอร์ยังไม่พร้อม กรุณากดอีกครั้ง');
+    }
+    if(!j.ok) throw new Error(j.error||'ผิดพลาด');
+    return j;
+  }, function(){
+    if(!retry) return new Promise(function(res){setTimeout(res,1500);})
+                      .then(function(){ return apiFetch(action,body,true); });
+    throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่');
+  });
 }
+function api(action,body){ return apiFetch(action,body,false); }
+function isAuthErr(e){ return /เซสชัน|สิทธิ์|เข้าสู่ระบบใหม่/.test(e && e.message || ''); }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
 function pad(n){return (n<10?'0':'')+n;}
@@ -345,7 +360,8 @@ $('btnCsv').onclick=function(){
   S.token=t;
   api('monthlyReport',{month:nowMonth()}).then(function(j){
     S.me=j.user; start();
-  }).catch(function(){ S.token=''; });
+  }).catch(function(e){ if(isAuthErr(e)){ S.token='';
+    try{ localStorage.removeItem('ol_sup_token'); }catch(_){} } });
 })();
 </script>
 </body>
