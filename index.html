@@ -616,13 +616,15 @@ function paintCps(){
 function openCheck(cp){
   S.cp=cp; S.photos=[];
   $('cpTitle').textContent=cp.code+' · '+cp.name;
-  var useCam = !!cp.requirePhoto;
+  S.headingOverride='';
+  var useCam = !!cp.requirePhoto || cp.photoHeading!=null;   // จุดที่บังคับทิศต้องเห็นกล้องเสมอ
   $('photoCard').classList.toggle('hide', !useCam);
-  $('photoReq').textContent = cp.photoHeading!=null ? 'บังคับทิศ' : 'ดูมุมอย่างเดียว';
+  $('photoReq').textContent = cp.photoHeading!=null ? 'บังคับทิศ ±'+cp.headingTol+'°' : 'ดูมุมอย่างเดียว';
   $('photoReq').className = 'pill '+(cp.photoHeading!=null?'warn':'');
   $('photoHint').textContent=cp.photoHint||'';
   paintChecklist();
   if(useCam) buildCam(); else stopCam();
+  syncSaveBtn();
   show('scCheck'); refreshGps();
 }
 
@@ -705,8 +707,17 @@ function buildCam(){
       '<div class="compass" id="cmp">เข็มทิศ: ยังไม่ได้เปิด</div>'+
     '</div>'+
     '<p class="muted" style="margin:10px 0 0">ส่องกล้องเทียบภาพตัวอย่างให้ได้มุมใกล้เคียง '+
-      'แล้วกดบันทึกเช็คอินได้เลย — ระบบไม่เก็บรูปจากหน้านี้</p>';
+      'แล้วกดบันทึกเช็คอินได้เลย — ระบบไม่เก็บรูปจากหน้านี้</p>'+
+    '<button class="btn-ghost btn-sm hide" id="btnHdgSkip" style="margin-top:10px;width:100%">'+
+      '🧭 เข็มทิศเครื่องนี้ใช้ไม่ได้ — ยืนยันเอง</button>';
   area.appendChild(live);
+
+  $('btnHdgSkip').onclick=function(){
+    var why=prompt('เข็มทิศของเครื่องอ่านค่าไม่ได้\n'+
+                   'ใส่เหตุผลเพื่อบันทึกแบบยืนยันเอง (หัวหน้าเวรจะเห็นในรายงาน):');
+    if(!why) return;
+    S.headingOverride=why; syncSaveBtn(); toast('บันทึกได้แล้ว — ระบบจะติดธงไว้');
+  };
 
   startCompass().then(function(okc){
     if(!okc) $('cmp').textContent='เครื่องนี้อ่านเข็มทิศไม่ได้ — ใช้ภาพตัวอย่างเทียบแทน';
@@ -722,22 +733,49 @@ function buildCam(){
 }
 
 function paintCompass(){
-  var el=$('cmp'); if(!el) return;
-  var cp=S.cp; if(!cp) return;
-  if(S.heading==null){ el.textContent='เข็มทิศ: กำลังอ่าน…'; return; }
-  if(cp.photoHeading==null){
-    el.textContent='ทิศปัจจุบัน '+S.heading+'° ('+dirName(S.heading)+') · จุดนี้ไม่บังคับทิศ';
-    el.style.color='#fff'; return;
+  var el=$('cmp'), cp=S.cp;
+  if(el && cp){
+    if(S.heading==null){
+      el.textContent='เข็มทิศ: กำลังอ่าน…'; el.style.color='#fff';
+    }else if(cp.photoHeading==null){
+      el.textContent='ทิศปัจจุบัน '+S.heading+'° ('+dirName(S.heading)+') · จุดนี้ไม่บังคับทิศ';
+      el.style.color='#fff';
+    }else{
+      var diff=angDiff(S.heading, cp.photoHeading);
+      if(diff<=cp.headingTol){
+        el.textContent='✅ ทิศถูกแล้ว ('+S.heading+'° / ต้องการ '+cp.photoHeading+'° ±'+cp.headingTol+'°)';
+        el.style.color='#86efac';
+      }else{
+        var delta=((cp.photoHeading-S.heading)%360+540)%360-180;
+        el.textContent=(delta>0?'↻ หมุนขวา ':'↺ หมุนซ้าย ')+Math.abs(Math.round(delta))+'° '+
+                       '(ต้องการ '+cp.photoHeading+'° · '+dirName(cp.photoHeading)+')';
+        el.style.color='#fcd34d';
+      }
+    }
   }
-  var diff=angDiff(S.heading, cp.photoHeading);
-  if(diff<=cp.headingTol){
-    el.textContent='✅ ทิศถูกแล้ว ('+S.heading+'° / ต้องการ '+cp.photoHeading+'°)';
-    el.style.color='#86efac';
+  syncSaveBtn();
+}
+
+/* จุดที่แอดมินตั้งองศาไว้ ต้องหันให้อยู่ในช่วงที่ยอมรับก่อนจึงจะกดบันทึกได้ */
+function headingState(){
+  var cp=S.cp;
+  if(!cp || cp.photoHeading==null) return { need:false, ok:true };
+  if(S.headingOverride)            return { need:true, ok:true, overridden:true };
+  if(S.heading==null)              return { need:true, ok:false, noRead:true };
+  return { need:true, ok:angDiff(S.heading, cp.photoHeading)<=cp.headingTol };
+}
+
+function syncSaveBtn(){
+  var b=$('btnSaveCheckin'); if(!b) return;
+  var h=headingState(), skip=$('btnHdgSkip');
+  if(skip) skip.classList.toggle('hide', !(h.need && h.noRead));
+  if(h.need && !h.ok){
+    b.disabled=true;
+    b.textContent = h.noRead ? '🧭 อ่านเข็มทิศไม่ได้ — ยังบันทึกไม่ได้'
+                             : '🧭 หันกล้องให้ตรงทิศก่อน';
   }else{
-    var delta=((cp.photoHeading-S.heading)%360+540)%360-180;
-    el.textContent=(delta>0?'↻ หมุนขวา ':'↺ หมุนซ้าย ')+Math.abs(Math.round(delta))+'° '+
-                   '(ต้องการ '+cp.photoHeading+'° · '+dirName(cp.photoHeading)+')';
-    el.style.color='#fcd34d';
+    b.disabled=false;
+    b.textContent = h.overridden ? 'บันทึกเช็คอิน (ยืนยันเอง)' : 'บันทึกเช็คอิน';
   }
 }
 
@@ -767,19 +805,25 @@ $('btnSaveCheckin').onclick=function(){
   });
   if(missing) return toast('ยังตอบเช็คลิสต์ไม่ครบ');
 
+  var hs=headingState();
+  if(hs.need && !hs.ok)
+    return toast(hs.noRead ? 'อ่านเข็มทิศไม่ได้ — กดปุ่มยืนยันเองใต้กล้องก่อน'
+                           : 'จุดนี้บังคับทิศ หันกล้องให้ตรงก่อนจึงจะบันทึกได้', 3500);
+
   var p=S.pos, body={
     roundId:S.round.roundId, cpId:cp.cpId,
     lat:p?p.coords.latitude:0, lng:p?p.coords.longitude:0,
     accuracyM:p?Math.round(p.coords.accuracy):999,
     clientTs:new Date().toISOString(), ua:navigator.userAgent,
-    answers:answers, photos:[], overrideReason:''
+    answers:answers, photos:[],
+    overrideReason: S.headingOverride ? ('เข็มทิศใช้ไม่ได้: '+S.headingOverride) : ''
   };
 
   var d=p?distM(p.coords.latitude,p.coords.longitude,cp.lat,cp.lng):-1;
   if(d<0 || d>cp.radiusM){
     var why=prompt('อยู่นอกรัศมีจุดตรวจ ('+(d<0?'ไม่มีพิกัด':d+' ม.')+')\nใส่เหตุผลเพื่อบันทึกแบบยืนยันเอง:');
     if(!why) return;
-    body.overrideReason=why;
+    body.overrideReason = body.overrideReason ? (body.overrideReason+' | '+why) : why;
   }
 
   btn.disabled=true; btn.textContent='กำลังบันทึก…';
@@ -811,7 +855,7 @@ $('btnSaveCheckin').onclick=function(){
         finish('เน็ตขัดข้อง — เก็บไว้ในคิวแล้ว');
       });
     }else{
-      toast(e.message); btn.disabled=false; btn.textContent='บันทึกเช็คอิน';
+      toast(e.message); syncSaveBtn();
     }
   });
 };
