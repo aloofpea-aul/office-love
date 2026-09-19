@@ -298,7 +298,8 @@ function drawBoard(){
            : roundPassed(r)        ? '<span class="pill bad">เลยเวลา</span>'
            : (new Date(r.openAt).getTime()<=Date.now() ? '<span class="pill live">กำลังเดิน</span>'
                                                        : '<span class="pill">รอเวลา</span>');
-    h+='<tr><td class="rowlab"><b>รอบ '+r.roundNo+'</b><br><span class="muted">'+hhmm(r.schedAt)+' น.</span></td>';
+    h+='<tr><td class="rowlab"><b>รอบ '+r.roundNo+'</b><br><span class="muted">'+
+       (r.flex ? ('ยืดหยุ่น '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)) : (hhmm(r.schedAt)+' น.'))+'</span></td>';
     d.checkpoints.forEach(function(cp){
       var c=map[r.roundId+'|'+cp.cpId];
       if(c){
