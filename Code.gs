@@ -646,6 +646,9 @@ function apiBootstrap(me) {
     user: { userId: me.userId, name: me.name, role: me.role },
     workDate: workDate, dayType: isHoliday(workDate) ? 'HOLIDAY' : 'WORKDAY',
     serverTime: nowIso(), checkpoints: cps, checklist: items,
+    // ต่ออายุโทเคนทุกครั้งที่เปิดแอป — เซสชันจะไม่หมดอายุเองตราบใดที่ยังใช้งานอยู่
+    token: signToken({ userId: me.userId, name: me.name, role: me.role,
+                       exp: toIso(new Date(Date.now() + CFG.TOKEN_TTL_DAYS * 86400000)) }),
     remindBeforeMin: num(cfgGet('REMIND_BEFORE_MIN', 10), 10),
     shiftPoint: (function () {
       var la = num(cfgGet('SHIFT_LAT', 0)), ln = num(cfgGet('SHIFT_LNG', 0));
