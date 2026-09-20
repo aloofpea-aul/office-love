@@ -73,6 +73,15 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .back{background:none;width:auto;font-size:17px;color:var(--pri2);
   display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;margin:-10px 0 -10px -16px}
 .hide{display:none!important}
+#rsWrap{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end}
+#rsWrap .rsBack{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+#rsWrap .rsSheet{position:relative;width:100%;max-height:88vh;overflow:auto;
+  background:var(--card);border-top-left-radius:18px;border-top-right-radius:18px;
+  padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+#rsWrap h3{margin:0 0 4px}
+.rsOpt{width:100%;text-align:left;min-height:52px;padding:14px;margin-top:10px;
+  font-size:17px;border-radius:12px;background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.rsOpt.pick{background:var(--pri);border-color:var(--pri);color:#fff}
 #ibBar{position:sticky;top:0;z-index:60;background:#7f1d1d;color:#fff;
   padding:12px 16px;font-size:15px;line-height:1.5;border-bottom:2px solid #ef4444}
 #ibBar b{display:block;font-size:16px;margin-bottom:4px}
@@ -111,6 +120,23 @@ a{color:var(--pri2)}
 <body>
 
 <div id="qbar" class="queue hide"></div>
+
+<!-- ───────────── เลือกเหตุผลเมื่อยืนยันเอง ───────────── -->
+<div id="rsWrap" class="hide">
+  <div class="rsBack"></div>
+  <div class="rsSheet">
+    <h3 id="rsTitle"></h3>
+    <p class="muted" style="margin:0">เลือกเหตุผล — หัวหน้าเวรจะเห็นในรายงาน</p>
+    <div id="rsList"></div>
+    <div id="rsOther" class="hide" style="margin-top:12px">
+      <input id="rsText" placeholder="พิมพ์เหตุผลสั้น ๆ">
+      <div style="height:10px"></div>
+      <button id="rsOk">ยืนยันเหตุผลนี้</button>
+    </div>
+    <div style="height:10px"></div>
+    <button class="btn-ghost" id="rsCancel">ยกเลิก</button>
+  </div>
+</div>
 
 <!-- ───────────── เตือนเมื่อเปิดจากเบราว์เซอร์ในแอปแชท ───────────── -->
 <div id="ibBar" class="hide">
@@ -528,19 +554,20 @@ function loadHome(){
 }
 
 /* ตรวจว่ายืนอยู่ในจุดลงเวลาเข้า-ออกเวรไหม
-   คืน body สำหรับส่ง API · คืน null เมื่อผู้ใช้ยกเลิกตอนถูกถามเหตุผล */
+   คืน Promise ของ body สำหรับส่ง API · คืน null เมื่อผู้ใช้ยกเลิกตอนถูกถามเหตุผล */
 function shiftBody(p, phase){
   var b = p ? { lat:p.coords.latitude, lng:p.coords.longitude } : {};
   var sp = S.boot && S.boot.shiftPoint;
-  if(!sp) return b;                                   // แอดมินยังไม่ได้ตั้งจุด = ไม่บังคับ
+  if(!sp) return Promise.resolve(b);                  // แอดมินยังไม่ได้ตั้งจุด = ไม่บังคับ
   var d = p ? distM(p.coords.latitude, p.coords.longitude, sp.lat, sp.lng) : -1;
-  if(d>=0 && d<=sp.radiusM) return b;
-  var why = prompt('อยู่นอกจุดลงเวลา '+(d<0?'(อ่านพิกัดไม่ได้)':d+' ม.')+
-                   ' · รัศมีที่กำหนด '+sp.radiusM+' ม.\n'+
-                   'ใส่เหตุผลเพื่อ'+phase+'แบบยืนยันเอง (ระบบจะบันทึกไว้ให้หัวหน้าเวรดู):');
-  if(!why) return null;
-  b.overrideReason = why;
-  return b;
+  if(d>=0 && d<=sp.radiusM) return Promise.resolve(b);
+  return askReason('อยู่นอกจุดลงเวลา '+(d<0?'(อ่านพิกัดไม่ได้)':d+' ม.')+
+                   ' · รัศมีที่กำหนด '+sp.radiusM+' ม.', R_SHIFT)
+    .then(function(why){
+      if(!why) return null;
+      b.overrideReason = why;
+      return b;
+    });
 }
 
 function paintShift(){
@@ -554,9 +581,10 @@ function paintShift(){
       if(!confirm('ยืนยันออกเวร?')) return;
       var btn=this; btn.disabled=true;
       getPos().catch(function(){ return null; }).then(function(p){
-        var b=shiftBody(p,'ออกเวร');
-        if(!b){ btn.disabled=false; return null; }
-        return api('shiftOut', b);
+        return shiftBody(p,'ออกเวร').then(function(b){
+          if(!b){ btn.disabled=false; return null; }
+          return api('shiftOut', b);
+        });
       }).then(function(r){ if(!r) return; toast('ออกเวรเรียบร้อย'); return loadHome(); })
         .catch(function(e){ toast(e.message,4000); btn.disabled=false; });
     };
@@ -566,9 +594,10 @@ function paintShift(){
     $('btnIn').onclick=function(){
       var btn=this; btn.disabled=true; toast('กำลังอ่านพิกัด…');
       getPos().catch(function(){ return null; }).then(function(p){
-        var b=shiftBody(p,'เข้าเวร');
-        if(!b){ btn.disabled=false; return null; }
-        return api('shiftIn', b);
+        return shiftBody(p,'เข้าเวร').then(function(b){
+          if(!b){ btn.disabled=false; return null; }
+          return api('shiftIn', b);
+        });
       }).then(function(r){ if(!r) return; toast('เข้าเวรเรียบร้อย'); return loadHome(); })
         .catch(function(e){ toast(e.message,4000); btn.disabled=false; });
     };
@@ -849,10 +878,10 @@ function buildCam(){
   area.appendChild(live);
 
   $('btnHdgSkip').onclick=function(){
-    var why=prompt('เข็มทิศของเครื่องอ่านค่าไม่ได้\n'+
-                   'ใส่เหตุผลเพื่อบันทึกแบบยืนยันเอง (หัวหน้าเวรจะเห็นในรายงาน):');
-    if(!why) return;
-    S.headingOverride=why; syncSaveBtn(); toast('บันทึกได้แล้ว — ระบบจะติดธงไว้');
+    askReason('เข็มทิศของเครื่องอ่านค่าไม่ได้', R_HDG).then(function(why){
+      if(!why) return;
+      S.headingOverride=why; syncSaveBtn(); toast('บันทึกได้แล้ว — ระบบจะติดธงไว้');
+    });
   };
 
   startCompass().then(function(okc){
@@ -962,11 +991,16 @@ $('btnSaveCheckin').onclick=function(){
 
   var d=p?distM(p.coords.latitude,p.coords.longitude,cp.lat,cp.lng):-1;
   if(d<0 || d>cp.radiusM){
-    var why=prompt('อยู่นอกรัศมีจุดตรวจ ('+(d<0?'ไม่มีพิกัด':d+' ม.')+')\nใส่เหตุผลเพื่อบันทึกแบบยืนยันเอง:');
-    if(!why) return;
-    body.overrideReason = body.overrideReason ? (body.overrideReason+' | '+why) : why;
+    askReason('อยู่นอกรัศมีจุดตรวจ ('+(d<0?'ไม่มีพิกัด':d+' ม.')+')', R_GPS).then(function(why){
+      if(!why) return;
+      body.overrideReason = body.overrideReason ? (body.overrideReason+' | '+why) : why;
+      doSave();
+    });
+    return;
   }
+  doSave();
 
+  function doSave(){
   btn.disabled=true; btn.textContent='กำลังบันทึก…';
   var finish=function(msg){
     stopCam(); toast(msg);
@@ -999,6 +1033,7 @@ $('btnSaveCheckin').onclick=function(){
       toast(e.message); syncSaveBtn();
     }
   });
+  }
 };
 
 /* ========================= แจ้งเหตุ ========================= */
@@ -1036,6 +1071,48 @@ $('btnSendInc').onclick=function(){
     toast(e.message); btn.disabled=false; btn.textContent='ส่งแจ้งเหตุ';
   });
 };
+
+/* ========================= เลือกเหตุผลเมื่อยืนยันเอง =========================
+   แทนการพิมพ์เอง — กดเลือกจากรายการได้เลย เหตุผลจะสม่ำเสมอ เอาไปทำสถิติได้ */
+var R_HDG = ['มือถือรุ่นนี้ไม่มีเข็มทิศ',
+             'เข็มทิศไม่ขึ้นค่า / ค้างอยู่',
+             'ค่าเข็มทิศแกว่ง ไม่นิ่ง',
+             'ใกล้ตู้ไฟ/โครงเหล็ก ทำให้เข็มทิศเพี้ยน'];
+var R_GPS = ['สัญญาณ GPS อ่อน / อยู่ในอาคาร',
+             'ยืนอยู่ที่จุดจริง แต่พิกัดคลาดเคลื่อน',
+             'เข้าจุดไม่ได้ มีสิ่งกีดขวาง',
+             'ฝนตก/น้ำขัง เข้าใกล้จุดไม่ได้'];
+var R_SHIFT = ['สัญญาณ GPS อ่อน / อยู่ในอาคาร',
+               'ยืนอยู่ที่จุดจริง แต่พิกัดคลาดเคลื่อน',
+               'ได้รับมอบหมายให้ลงเวลาที่จุดอื่น'];
+
+function askReason(title, list){
+  return new Promise(function(res){
+    var done=false;
+    function close(v){ if(done) return; done=true; $('rsWrap').classList.add('hide'); res(v); }
+    $('rsTitle').textContent=title;
+    var box=$('rsList'); box.innerHTML='';
+    list.forEach(function(t){
+      var b=document.createElement('button');
+      b.className='rsOpt'; b.textContent=t;
+      b.onclick=function(){ close(t); };
+      box.appendChild(b);
+    });
+    var bo=document.createElement('button');
+    bo.className='rsOpt'; bo.textContent='อื่น ๆ — พิมพ์เอง';
+    bo.onclick=function(){ $('rsOther').classList.remove('hide'); $('rsText').focus(); };
+    box.appendChild(bo);
+    $('rsOther').classList.add('hide'); $('rsText').value='';
+    $('rsOk').onclick=function(){
+      var v=$('rsText').value.trim();
+      if(!v){ toast('พิมพ์เหตุผลก่อนครับ'); return; }
+      close(v);
+    };
+    $('rsCancel').onclick=function(){ close(null); };
+    $('rsWrap').querySelector('.rsBack').onclick=function(){ close(null); };
+    $('rsWrap').classList.remove('hide');
+  });
+}
 
 /* ========================= เตือนเมื่อเปิดจากแอปแชท =========================
    เบราว์เซอร์ในตัวของ LINE/Facebook บล็อก getUserMedia และเซ็นเซอร์ทิศทาง
