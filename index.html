@@ -73,6 +73,21 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .back{background:none;width:auto;font-size:17px;color:var(--pri2);
   display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;margin:-10px 0 -10px -16px}
 .hide{display:none!important}
+.hp details{background:var(--card);border:1px solid var(--line);border-radius:14px;
+  margin-bottom:10px;overflow:hidden}
+.hp summary{padding:15px 16px;font-size:17px;font-weight:700;cursor:pointer;list-style:none}
+.hp summary::-webkit-details-marker{display:none}
+.hp summary::after{content:'▾';float:right;color:var(--pri2)}
+.hp details[open] summary::after{content:'▴'}
+.hp .bd{padding:0 16px 16px;font-size:16px;line-height:1.65}
+.hp .bd ol,.hp .bd ul{padding-left:20px;margin:8px 0}
+.hp .bd li{margin:6px 0}
+.hp .warn{background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);
+  border-radius:10px;padding:10px 12px;margin:10px 0}
+.hp .bad{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);
+  border-radius:10px;padding:10px 12px;margin:10px 0}
+.hp .ok{background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.4);
+  border-radius:10px;padding:10px 12px;margin:10px 0}
 #rsWrap{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end}
 #rsWrap .rsBack{position:absolute;inset:0;background:rgba(0,0,0,.6)}
 #rsWrap .rsSheet{position:relative;width:100%;max-height:88vh;overflow:auto;
@@ -183,6 +198,8 @@ a{color:var(--pri2)}
     <div style="height:16px"></div>
     <button id="btnLogin">เข้าสู่ระบบ</button>
     <p id="loginMsg" class="muted" style="margin:12px 0 0;text-align:center"></p>
+    <p style="margin:14px 0 0;text-align:center">
+      <a href="#" id="lnkHelpLogin" style="color:var(--pri2)">📖 คู่มือการใช้งาน</a></p>
   </div>
 </section>
 
@@ -214,10 +231,185 @@ a{color:var(--pri2)}
     <div id="roundList"></div>
 
     <button class="btn-ghost" id="btnIncidentHome" style="margin-top:8px">⚠️ แจ้งเหตุผิดปกติ</button>
+    <button class="btn-ghost" id="btnHelpHome" style="margin-top:8px">📖 คู่มือการใช้งาน</button>
     <div id="staffLinks" class="hide" style="margin-top:10px">
       <a class="btn btn-ghost" href="supervisor.html" style="text-decoration:none;margin-bottom:8px">📋 หน้าหัวหน้าเวร</a>
       <a class="btn btn-ghost" id="lnkAdmin" href="admin.html" style="text-decoration:none">⚙️ ตั้งค่าระบบ</a>
     </div>
+  </div>
+</section>
+
+<!-- ───────────── คู่มือการใช้งาน ───────────── -->
+<section id="scHelp" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackHelp">‹ กลับ</button>
+    <strong>คู่มือการใช้งาน</strong>
+    <span style="width:40px"></span>
+  </div></div>
+  <div class="wrap hp">
+    <p class="muted">สำหรับพนักงานรักษาความปลอดภัย กฟส.อ่าวลึก · แตะหัวข้อเพื่อเปิดอ่าน</p>
+
+    <details open><summary>1. ติดตั้งแอปลงหน้าจอ (ทำครั้งเดียว สำคัญที่สุด)</summary>
+      <div class="bd">
+        <div class="bad"><b>ห้ามเปิดจากลิงก์ในแชท LINE</b> เพราะกล้องและเข็มทิศจะใช้ไม่ได้</div>
+        <ol>
+          <li>ถ้าตอนนี้เปิดจาก LINE อยู่ กดปุ่ม <b>⋮</b> มุมขวา แล้วเลือก "เปิดในเบราว์เซอร์อื่น"
+              (iPhone กด <b>⋯</b> แล้วเลือก "เปิดในซาฟารี")</li>
+          <li>พอเปิดใน Chrome แล้ว กดปุ่ม <b>⋮</b> ของ Chrome → <b>"เพิ่มลงในหน้าจอหลัก"</b></li>
+          <li>จะมีไอคอน 🛡️ Office Love โผล่บนหน้าจอมือถือ</li>
+          <li><b>ต่อไปเข้าจากไอคอนนี้เท่านั้น</b></li>
+          <li>ครั้งแรกระบบจะขอสิทธิ์ <b>ตำแหน่ง</b> กับ <b>กล้อง</b> ให้กด "อนุญาต" ทั้งสองอัน</li>
+        </ol>
+      </div>
+    </details>
+
+    <details><summary>2. เข้าสู่ระบบ</summary>
+      <div class="bd">
+        <ul>
+          <li>ใส่ <b>ชื่อผู้ใช้</b> (เช่น guard01) หรือ <b>เบอร์โทร</b> ของตัวเอง ก็ได้ทั้งคู่</li>
+          <li>ใส่รหัสผ่าน แล้วกดเข้าสู่ระบบ</li>
+          <li><b>เข้าครั้งเดียวพอ</b> ระบบจะจำไว้ตลอด ครั้งต่อไปเปิดแอปแล้วเข้าหน้าหลักเลย</li>
+          <li>จะหลุดออกก็ต่อเมื่อกดปุ่ม "ออก" เองเท่านั้น</li>
+        </ul>
+        <div class="warn">ถ้าเปิดแอปแล้วขึ้น "กำลังเข้าสู่ระบบ…" นาน แปลว่าสัญญาณไม่ดี
+          ระบบจะลองใหม่เองเรื่อย ๆ <b>ไม่ต้องล็อกอินใหม่</b> รอสักครู่</div>
+      </div>
+    </details>
+
+    <details><summary>3. เริ่มกะ — ลงเวลาเข้าเวร</summary>
+      <div class="bd">
+        <ol>
+          <li>เปิดแอป หน้าหลักจะมีปุ่ม <b>🕕 ลงเวลาเข้าเวร</b></li>
+          <li>ยืนที่จุดลงเวลาที่กำหนด แล้วกดปุ่ม</li>
+          <li>รอสักครู่ให้อ่านพิกัด เสร็จแล้วจะขึ้น "อยู่ระหว่างเวร"</li>
+        </ol>
+        <div class="warn"><b>ต้องกดเข้าเวรก่อนเสมอ</b> ถ้าไม่กด ระบบจะไม่เตือนรอบเดินตรวจให้เลยทั้งวัน</div>
+      </div>
+    </details>
+
+    <details><summary>4. เดินตรวจแต่ละรอบ</summary>
+      <div class="bd">
+        <ol>
+          <li>หน้าหลักจะมีรายการรอบทั้งหมดของวัน แตะรอบที่ถึงเวลา</li>
+          <li>จะเห็นจุดตรวจ A ถึง F แตะจุดที่จะเดินไป</li>
+          <li>เดินไปยืนที่จุดจริง — ต้องอยู่ในระยะที่กำหนด ไม่งั้นบันทึกไม่ได้</li>
+          <li>ส่องกล้องให้ได้มุมใกล้เคียงกับภาพตัวอย่าง</li>
+          <li>ตอบเช็คลิสต์ให้ครบ</li>
+          <li>กด <b>บันทึกเช็คอิน</b></li>
+        </ol>
+        <div class="ok">ระบบ <b>ไม่เก็บรูป</b> จากหน้านี้ กล้องมีไว้ช่วยเล็งมุมเท่านั้น</div>
+        <p>ทำจนครบทุกจุด รอบนั้นจะขึ้นว่า "ครบแล้ว"</p>
+      </div>
+    </details>
+
+    <details><summary>5. รอบกลางดึก 00:00–06:00 (รอบยืดหยุ่น)</summary>
+      <div class="bd">
+        <p>สองรอบสุดท้ายของกะ <b>ไม่มีเวลาตายตัว</b> เดินเมื่อไหร่ก็ได้ ขอแค่ครบ 2 รอบ
+           ภายในช่วงหลังเที่ยงคืนถึงหกโมงเช้า</p>
+        <ul>
+          <li>หน้ารอบจะขึ้นว่า "ช่วง 00:00–06:00 น." พร้อมนับถอยหลังว่าเหลือเวลาอีกเท่าไหร่</li>
+          <li>เหลือเวลาอีก 1 ชั่วโมงแล้วยังไม่เดิน ระบบจะเตือน</li>
+        </ul>
+      </div>
+    </details>
+
+    <details><summary>6. รอบที่ขึ้น 🔒 ล็อค คืออะไร</summary>
+      <div class="bd">
+        <p>รอบที่เลยเวลามาแล้วเกิน 1 ชั่วโมง ระบบจะปิดรับการบันทึก เพื่อไม่ให้ย้อนหลังได้</p>
+        <ul>
+          <li>ในรายการรอบจะเห็นรูป 🔒 และป้ายสีแดงว่า "ล็อค" พร้อมเวลาที่ปิด</li>
+          <li>กดเข้าไปดูได้ แต่บันทึกไม่ได้</li>
+          <li>รอบนั้นจะถูกบันทึกว่า "ขาด" และหัวหน้าเวรจะเห็น</li>
+        </ul>
+        <div class="warn">ถ้ามีเหตุจำเป็นจริง ๆ ที่เดินไม่ได้ ให้แจ้งหัวหน้าเวรทราบ</div>
+      </div>
+    </details>
+
+    <details><summary>7. แจ้งเหตุผิดปกติ</summary>
+      <div class="bd">
+        <ol>
+          <li>กดปุ่ม <b>⚠️ แจ้งเหตุผิดปกติ</b> ได้จากหน้าหลักหรือหน้ารอบ</li>
+          <li>เลือกประเภทเหตุ ใส่หัวข้อและรายละเอียด</li>
+          <li>แนบรูปได้ (อันนี้เก็บรูปจริง ใช้เป็นหลักฐาน)</li>
+          <li>กดส่ง หัวหน้าเวรจะได้รับแจ้งทันที</li>
+        </ol>
+        <p>เจออะไรผิดปกติแจ้งได้เลย ไม่ต้องรอให้ถึงรอบเดินตรวจ</p>
+      </div>
+    </details>
+
+    <details><summary>8. จบกะ — ลงเวลาออกเวร</summary>
+      <div class="bd">
+        <p>กลับมาที่จุดลงเวลา กดปุ่ม <b>ออกเวร</b> ที่หน้าหลัก แล้วยืนยัน</p>
+        <div class="warn">อย่าลืมกดออกเวรทุกครั้ง ไม่งั้นระบบจะคิดว่ายังอยู่ในเวรอยู่</div>
+      </div>
+    </details>
+
+    <details><summary>9. ไม่มีสัญญาณอินเทอร์เน็ต ทำยังไง</summary>
+      <div class="bd">
+        <p><b>เดินตรวจต่อได้ตามปกติ</b> ระบบเก็บรายการไว้ในเครื่องก่อน</p>
+        <ul>
+          <li>จะมีแถบขึ้นบอกว่ามีกี่รายการรออยู่ในคิว</li>
+          <li>พอมีสัญญาณกลับมา ระบบจะส่งขึ้นเซิร์ฟเวอร์เองอัตโนมัติ</li>
+          <li>เวลาที่บันทึกจะเป็นเวลาที่เดินจริง ไม่ใช่เวลาที่ส่ง</li>
+        </ul>
+        <div class="warn">อย่าเพิ่งถอนแอปหรือล้างข้อมูลเบราว์เซอร์ตอนที่ยังมีคิวค้างอยู่</div>
+      </div>
+    </details>
+
+    <details><summary>10. ปัญหาที่พบบ่อย</summary>
+      <div class="bd">
+        <p><b>ขึ้นแถบแดงว่าเปิดจาก LINE</b><br>
+           ทำตามหัวข้อที่ 1 — ต้องย้ายไปเปิดใน Chrome ไม่งั้นกล้องกับเข็มทิศใช้ไม่ได้</p>
+        <p><b>เข็มทิศขึ้นว่า "กำลังอ่าน…" ค้างตลอด</b><br>
+           แปลว่ามือถือเครื่องนั้นไม่มีเซ็นเซอร์เข็มทิศ ให้กดปุ่ม
+           <b>🧭 เข็มทิศเครื่องนี้ใช้ไม่ได้ — ยืนยันเอง</b> แล้วเลือกเหตุผล
+           "มือถือรุ่นนี้ไม่มีเข็มทิศ" จากนั้นบันทึกได้ตามปกติ</p>
+        <p><b>ขึ้นว่าอยู่นอกรัศมีจุดตรวจ</b><br>
+           ลองเดินเข้าใกล้จุดอีกนิด ออกมาที่โล่ง รอ 10–20 วินาทีให้ GPS จับตำแหน่งใหม่
+           ถ้ายังไม่ได้ ให้เลือกเหตุผลแล้วยืนยันเอง</p>
+        <p><b>กดบันทึกไม่ได้ ปุ่มเป็นสีจาง</b><br>
+           ดูข้อความบนปุ่ม จะบอกว่าติดอะไร เช่น ยังตอบเช็คลิสต์ไม่ครบ หรือยังไม่ได้หันกล้องให้ตรงทิศ</p>
+        <p><b>เปิดแอปแล้วขึ้นหน้าล็อกอินทั้งที่เคยเข้าแล้ว</b><br>
+           แปลว่าเผลอกดปุ่มออกจากระบบ ให้ล็อกอินใหม่ครั้งเดียว แล้วจะจำต่อไป</p>
+      </div>
+    </details>
+
+    <details><summary>11. มือถือที่ใช้งานได้ดี</summary>
+      <div class="bd">
+        <p>แอปนี้ใช้ <b>เซ็นเซอร์เข็มทิศ</b> ในการตรวจว่าหันกล้องถูกทิศหรือไม่
+           มือถือราคาประหยัดหลายรุ่น <b>ตัดเซ็นเซอร์ตัวนี้ออก</b> เพื่อลดต้นทุน</p>
+        <div class="bad"><b>ตรวจแล้วว่าไม่มีเข็มทิศ</b><br>
+           Samsung Galaxy A04s (รุ่นที่ใช้อยู่ตอนนี้) — ใช้งานได้ แต่ต้องกดยืนยันเองทุกจุด</div>
+        <div class="ok"><b>ตรวจแล้วว่ามีเข็มทิศ</b><br>
+           Samsung Galaxy A16 — ราคาประหยัดเหมือนกัน แต่มีเข็มทิศครบ</div>
+        <p><b>วิธีเช็กก่อนซื้อเครื่องใหม่</b></p>
+        <ol>
+          <li>เปิดเว็บ <b>gsmchoice.com</b> หรือ <b>gsmarena.com</b> แล้วค้นชื่อรุ่น</li>
+          <li>ดูหัวข้อเซ็นเซอร์ ต้องมีคำว่า <b>Magnetometer</b> หรือ <b>Compass</b> เป็น Yes</li>
+          <li>หรือลองที่ร้าน — โหลดแอปเข็มทิศฟรีมาเปิดดู ถ้าเข็มหมุนตามการหันเครื่องแปลว่ามี</li>
+        </ol>
+        <p class="muted">ข้อสังเกต: Samsung ซีรีส์ A0x (A03 A04 A05 A06) มักไม่มีเข็มทิศ
+           ส่วน A1x ขึ้นไปมักจะมี แต่ควรเช็กทีละรุ่นก่อนซื้อ เพราะผู้ผลิตเปลี่ยนสเปกบ่อย</p>
+      </div>
+    </details>
+
+    <details><summary>12. แก้ข้อมูลส่วนตัวและรหัสผ่าน</summary>
+      <div class="bd">
+        <p>แตะ <b>ชื่อตัวเองมุมซ้ายบน</b>ของหน้าหลัก จะเข้าหน้าข้อมูลส่วนตัว แก้ได้ 3 อย่าง</p>
+        <ul>
+          <li><b>รูปประจำตัว</b> — เลือกจากกล้องหรืออัลบั้ม</li>
+          <li><b>เบอร์โทร</b></li>
+          <li><b>รหัสผ่าน</b> — ต้องใส่รหัสเดิมให้ถูกก่อน รหัสใหม่อย่างน้อย 6 ตัว</li>
+        </ul>
+        <div class="warn">ควรเปลี่ยนรหัสผ่านเป็นของตัวเองตั้งแต่วันแรก
+          เพราะรหัสตั้งต้นเป็นเบอร์โทรซึ่งคนอื่นเดาได้ง่าย</div>
+        <p>ส่วนชื่อ-สกุลและสิทธิ์การใช้งาน ต้องให้ผู้ดูแลระบบแก้ให้</p>
+      </div>
+    </details>
+
+    <p class="muted" style="text-align:center;margin:18px 0 0">
+      มีปัญหาที่คู่มือไม่ได้ตอบ แจ้งหัวหน้าเวรหรือผู้ดูแลระบบได้เลยครับ</p>
+    <div style="height:20px"></div>
   </div>
 </section>
 
@@ -352,7 +544,7 @@ var $ = function(id){ return document.getElementById(id); };
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
 function show(id){
-  ['scSplash','scLogin','scHome','scMe','scRound','scCheck','scInc'].forEach(function(s){
+  ['scSplash','scLogin','scHome','scMe','scHelp','scRound','scCheck','scInc'].forEach(function(s){
     $(s).classList.toggle('hide', s!==id);
   });
   window.scrollTo(0,0);
@@ -1165,6 +1357,9 @@ function paintMe(){
   $('mePhone').value = p.phone || '';
 }
 $('btnMe').onclick      = function(){ paintMe(); show('scMe'); };
+$('btnHelpHome').onclick= function(){ show('scHelp'); };
+$('btnBackHelp').onclick= function(){ show('scHome'); };
+$('lnkHelpLogin').onclick=function(e){ e.preventDefault(); show('scHelp'); };
 $('btnBackMe').onclick  = function(){ show('scHome'); };
 $('btnPickAvatar').onclick = function(){ $('fileAvatar').click(); };
 
@@ -1237,14 +1432,14 @@ $('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
 
 /* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
 function curScreen(){
-  var ids=['scHome','scMe','scRound','scCheck','scInc'];
+  var ids=['scHome','scMe','scHelp','scRound','scCheck','scInc'];
   for(var i=0;i<ids.length;i++) if(!$(ids[i]).classList.contains('hide')) return ids[i];
   return '';
 }
 function goBack(){
   var c=curScreen();
   if(c==='scCheck'){ stopCam(); show('scRound'); toast('ย้อนกลับ'); }
-  else if(c==='scMe'){ show('scHome'); }
+  else if(c==='scMe' || c==='scHelp'){ show('scHome'); }
   else if(c==='scRound'||c==='scInc'){ loadHome(); toast('กลับหน้าหลัก'); }
 }
 function goForward(){
