@@ -65,6 +65,22 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .ptfloat{position:fixed;left:50%;top:36%;font-size:42px;font-weight:800;color:#c4b5fd;
   text-shadow:0 2px 20px rgba(139,92,246,.75);z-index:99;pointer-events:none;
   animation:ptup 1.4s ease-out forwards}
+.ptteam{margin-top:12px;padding-top:12px;border-top:1px dashed #4c3f7a}
+.ptlink{cursor:pointer}
+.bg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.bg{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center}
+.bg.on{border-color:#a78bfa;background:linear-gradient(160deg,#3a2d6b,#2a2540)}
+.bg .ic{font-size:30px;line-height:1}
+.bg.off .ic{filter:grayscale(1);opacity:.45}
+.bg .nm{font-weight:700;font-size:15px;margin-top:4px}
+.bg .pg{font-size:12px;color:var(--dim);margin-top:2px}
+.bg .mini{height:6px;background:#1e1b2b;border-radius:99px;margin-top:6px;overflow:hidden}
+.bg .mini i{display:block;height:100%;background:#8b5cf6}
+.shop{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:8px}
+.shop .cost{font-weight:800;color:#c4b5fd;white-space:nowrap}
+.shop button{width:auto;padding:8px 14px;font-size:15px;margin:0}
+.hist{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}
 @keyframes ptup{
   0%{opacity:0;transform:translate(-50%,12px) scale(.7)}
   18%{opacity:1;transform:translate(-50%,0) scale(1.12)}
@@ -244,6 +260,14 @@ a{color:var(--pri2)}
       <div class="ptbar"><i id="ptBar"></i></div>
       <div class="muted" style="font-size:13px;margin-top:6px" id="ptGoal"></div>
       <div class="ptchips" id="ptChips"></div>
+      <div class="ptteam">
+        <div class="row between">
+          <div class="muted" style="font-size:13px">เป้าทีมเดือนนี้</div>
+          <div class="muted" style="font-size:13px" id="ptTeamTxt"></div>
+        </div>
+        <div class="ptbar" style="margin-top:6px"><i id="ptTeamBar"></i></div>
+      </div>
+      <button class="btn-ghost" id="btnPtOpen" style="margin-top:12px">🏅 เหรียญตราและร้านแลกแต้ม</button>
     </div>
 
     <div class="card">
@@ -303,6 +327,46 @@ a{color:var(--pri2)}
 </section>
 
 <!-- ───────────── คู่มือการใช้งาน ───────────── -->
+<section id="scPts" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackPts">‹ กลับ</button>
+    <strong>รางวัลของฉัน</strong>
+    <span style="width:40px"></span>
+  </div></div>
+  <div class="wrap">
+    <div class="ptcard">
+      <div class="row between">
+        <div>
+          <div class="ptlv" id="pbLevel">—</div>
+          <div class="muted" style="font-size:13px" id="pbCareer"></div>
+        </div>
+        <div style="text-align:right">
+          <div class="muted" style="font-size:13px">แต้มคงเหลือ</div>
+          <div class="ptbig" id="pbBalance">0</div>
+        </div>
+      </div>
+      <div class="ptbar"><i id="pbLvBar"></i></div>
+      <div class="muted" style="font-size:13px;margin-top:6px" id="pbLvTxt"></div>
+    </div>
+
+    <h3>เหรียญตรา <span class="muted" id="pbBadgeCount" style="font-size:15px"></span></h3>
+    <div class="bg-grid" id="pbBadges"></div>
+
+    <h3 style="margin-top:22px">ร้านแลกแต้ม</h3>
+    <p class="muted" style="margin:0 0 10px;font-size:14px">
+      แลกแล้วแจ้งหัวหน้าเวรรับของได้เลย · แต้มที่ใช้แลกไม่ทำให้ระดับลดลง
+    </p>
+    <div id="pbShop"></div>
+
+    <h3 style="margin-top:22px">ประวัติการแลก</h3>
+    <div id="pbRedeem"></div>
+
+    <h3 style="margin-top:22px">แต้มย้อนหลัง 14 วัน</h3>
+    <div id="pbHist"></div>
+    <div style="height:24px"></div>
+  </div>
+</section>
+
 <section id="scHelp" class="hide">
   <div class="topbar"><div class="wrap row between">
     <button class="back" id="btnBackHelp">‹ กลับ</button>
@@ -624,7 +688,7 @@ var $ = function(id){ return document.getElementById(id); };
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
 function show(id){
-  ['scSplash','scLogin','scHome','scMe','scHelp','scInsp','scRound','scCheck','scInc'].forEach(function(s){
+  ['scSplash','scLogin','scHome','scMe','scPts','scHelp','scInsp','scRound','scCheck','scInc'].forEach(function(s){
     $(s).classList.toggle('hide', s!==id);
   });
   window.scrollTo(0,0);
@@ -853,9 +917,88 @@ function paintPoints(p){
   if(p.roundsTotal) c.push('รอบครบ ' + p.roundsDone + '/' + p.roundsTotal);
   if(p.incidents)   c.push('📸 รายงานเหตุ ' + p.incidents);
   if(p.breakdown && p.breakdown.night) c.push('🌙 โบนัสกลางคืน +' + ptFmt(p.breakdown.night));
+  if(p.badgesTotal) c.push('🏅 เหรียญตรา ' + p.badgesGot + '/' + p.badgesTotal);
   $('ptChips').innerHTML = c.map(function(t){
     return '<span class="ptchip">' + t + '</span>';
   }).join('');
+  var tp = p.teamGoal ? Math.min(100, Math.round(p.teamMonth * 100 / p.teamGoal)) : 0;
+  $('ptTeamBar').style.width = tp + '%';
+  $('ptTeamTxt').textContent = ptFmt(p.teamMonth) + ' / ' + ptFmt(p.teamGoal) + ' (' + tp + '%)';
+}
+
+/* ========================= รางวัลของฉัน ========================= */
+function openPts(){
+  show('scPts');
+  $('pbBadges').innerHTML = '<p class="muted">กำลังโหลด…</p>';
+  $('pbShop').innerHTML = ''; $('pbRedeem').innerHTML = ''; $('pbHist').innerHTML = '';
+  api('ptBoard').then(function(j){ paintBoard(j); })
+    .catch(function(e){ $('pbBadges').innerHTML = '<p class="muted">โหลดไม่สำเร็จ — ' + e.message + '</p>'; });
+}
+
+function paintBoard(j){
+  var p = j.points;
+  S.pt = p; S.board = j;
+  $('pbLevel').textContent   = 'ระดับ ' + p.level + ' · ' + p.levelName;
+  $('pbCareer').textContent  = 'แต้มที่ทำได้ทั้งหมด ' + ptFmt(p.career) + ' แต้ม';
+  $('pbBalance').textContent = ptFmt(p.balance);
+  var span = p.levelNext ? (p.levelNext - p.levelMin) : 1;
+  var got  = p.levelNext ? (p.career - p.levelMin) : 1;
+  $('pbLvBar').style.width = Math.max(0, Math.min(100, Math.round(got * 100 / span))) + '%';
+  $('pbLvTxt').textContent = p.levelNext
+    ? ('อีก ' + ptFmt(p.levelNext - p.career) + ' แต้ม จะขึ้นระดับ ' + (p.level + 1))
+    : 'ถึงระดับสูงสุดแล้ว';
+
+  $('pbBadgeCount').textContent = '(' + p.badgesGot + '/' + p.badgesTotal + ')';
+  $('pbBadges').innerHTML = j.badges.map(function(b){
+    return '<div class="bg ' + (b.done ? 'on' : 'off') + '" title="' + b.how + '">' +
+      '<div class="ic">' + b.icon + '</div>' +
+      '<div class="nm">' + b.name + '</div>' +
+      '<div class="pg">' + (b.done ? 'ได้รับแล้ว' : ptFmt(b.have) + '/' + ptFmt(b.need) + ' ' + b.unit) + '</div>' +
+      '<div class="mini"><i style="width:' + b.pct + '%"></i></div>' +
+      '</div>';
+  }).join('');
+
+  $('pbShop').innerHTML = j.rewards.map(function(r){
+    var can = p.balance >= r.cost;
+    return '<div class="shop"><div><div style="font-weight:600">' + r.name + '</div>' +
+      '<div class="muted" style="font-size:13px">' + (can ? 'แลกได้' : 'ยังขาดอีก ' + ptFmt(r.cost - p.balance) + ' แต้ม') + '</div></div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      '<span class="cost">' + ptFmt(r.cost) + '</span>' +
+      '<button class="' + (can ? '' : 'btn-ghost') + '" data-rid="' + r.rewardId +
+      '" data-nm="' + r.name + '" data-cost="' + r.cost + '"' + (can ? '' : ' disabled') + '>แลก</button>' +
+      '</div></div>';
+  }).join('');
+  Array.prototype.forEach.call($('pbShop').querySelectorAll('button[data-rid]'), function(b){
+    b.onclick = function(){ doRedeem(b); };
+  });
+
+  var ST = { REQUESTED:'รอรับของ', GIVEN:'รับแล้ว', CANCELLED:'ยกเลิก (คืนแต้มแล้ว)' };
+  $('pbRedeem').innerHTML = j.redemptions.length
+    ? j.redemptions.map(function(r){
+        return '<div class="hist"><span>' + r.name + '</span>' +
+          '<span class="muted">' + (ST[r.status] || r.status) + ' · −' + ptFmt(r.cost) + '</span></div>';
+      }).join('')
+    : '<p class="muted">ยังไม่เคยแลกของรางวัล</p>';
+
+  $('pbHist').innerHTML = j.history.length
+    ? j.history.map(function(h){
+        return '<div class="hist"><span>' + thaiDate(h.workDate) +
+          (h.perfect ? ' ✅' : '') + '</span>' +
+          '<span class="muted">' + h.roundsDone + '/' + h.roundsTotal + ' รอบ · <b style="color:#c4b5fd">' +
+          ptFmt(h.total) + '</b> แต้ม</span></div>';
+      }).join('')
+    : '<p class="muted">ยังไม่มีข้อมูล</p>';
+}
+
+function doRedeem(btn){
+  var nm = btn.getAttribute('data-nm'), cost = btn.getAttribute('data-cost');
+  if(!confirm('แลก "' + nm + '" ใช้ ' + cost + ' แต้ม?\n\nแลกแล้วแจ้งหัวหน้าเวรเพื่อรับของ')) return;
+  btn.disabled = true;
+  api('redeem', { rewardId: btn.getAttribute('data-rid') }).then(function(j){
+    toast('แลกเรียบร้อย — แจ้งหัวหน้าเวรรับ ' + j.name + ' ได้เลย', 4000);
+    ptFloat('🎁');
+    openPts(); loadPoints();
+  }).catch(function(e){ toast(e.message, 3500); btn.disabled = false; });
 }
 
 function ptFloat(txt){
@@ -1483,6 +1626,8 @@ function paintMe(){
 }
 $('btnMe').onclick      = function(){ paintMe(); show('scMe'); };
 $('btnHelpHome').onclick= function(){ show('scHelp'); };
+$('btnPtOpen').onclick  = function(){ openPts(); };
+$('btnBackPts').onclick = function(){ show('scHome'); };
 
 /* ---------- สุ่มตรวจ (หัวหน้าเวร / แอดมิน) ---------- */
 function paintInspCps(){
@@ -1607,14 +1752,14 @@ $('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
 
 /* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
 function curScreen(){
-  var ids=['scHome','scMe','scHelp','scInsp','scRound','scCheck','scInc'];
+  var ids=['scHome','scMe','scPts','scHelp','scInsp','scRound','scCheck','scInc'];
   for(var i=0;i<ids.length;i++) if(!$(ids[i]).classList.contains('hide')) return ids[i];
   return '';
 }
 function goBack(){
   var c=curScreen();
   if(c==='scCheck'){ stopCam(); show('scRound'); toast('ย้อนกลับ'); }
-  else if(c==='scMe' || c==='scHelp' || c==='scInsp'){ show('scHome'); }
+  else if(c==='scMe' || c==='scPts' || c==='scHelp' || c==='scInsp'){ show('scHome'); }
   else if(c==='scRound'||c==='scInc'){ loadHome(); toast('กลับหน้าหลัก'); }
 }
 function goForward(){
