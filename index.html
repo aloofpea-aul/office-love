@@ -235,7 +235,37 @@ a{color:var(--pri2)}
     <div id="staffLinks" class="hide" style="margin-top:10px">
       <a class="btn btn-ghost" href="supervisor.html" style="text-decoration:none;margin-bottom:8px">📋 หน้าหัวหน้าเวร</a>
       <a class="btn btn-ghost" id="lnkAdmin" href="admin.html" style="text-decoration:none">⚙️ ตั้งค่าระบบ</a>
+      <button class="btn-ghost" id="btnInspHome" style="margin-top:8px">🔍 สุ่มตรวจจุด (ไม่นับเป็นรอบ)</button>
     </div>
+  </div>
+</section>
+
+<!-- ───────────── สุ่มตรวจ (หัวหน้าเวร / แอดมิน) ───────────── -->
+<section id="scInsp" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackInsp">‹ กลับ</button>
+    <strong>สุ่มตรวจจุด</strong>
+    <span style="width:40px"></span>
+  </div></div>
+  <div class="wrap">
+    <div class="banner ok">บันทึกแยกจากรอบของ รปภ. — ไม่ไปนับเป็นผลงานของเขา
+      และไม่ผูกกับเวลา ตรวจเมื่อไหร่ จุดไหนก็ได้</div>
+
+    <h3>1. เลือกจุดที่ตรวจ</h3>
+    <div id="inspList"></div>
+    <p class="muted" id="inspPos" style="margin:6px 0 0"></p>
+
+    <h3>2. ข้อสังเกต (ไม่บังคับ)</h3>
+    <textarea id="inspNote" rows="3" placeholder="เช่น ไฟทางเสีย 1 ดวง · ประตูหลังไม่ได้ล็อก · เรียบร้อยดี"></textarea>
+
+    <h3>3. แนบรูป (ไม่บังคับ)</h3>
+    <input type="file" id="inspPhoto" accept="image/*" class="hide">
+    <button class="btn-ghost" id="btnInspPick">📷 เลือก/ถ่ายรูปแนบ</button>
+    <div id="inspThumb" style="margin-top:10px"></div>
+
+    <div style="height:16px"></div>
+    <button id="btnInspSave">บันทึกการสุ่มตรวจ</button>
+    <div style="height:20px"></div>
   </div>
 </section>
 
@@ -561,7 +591,7 @@ var $ = function(id){ return document.getElementById(id); };
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
 function show(id){
-  ['scSplash','scLogin','scHome','scMe','scHelp','scRound','scCheck','scInc'].forEach(function(s){
+  ['scSplash','scLogin','scHome','scMe','scHelp','scInsp','scRound','scCheck','scInc'].forEach(function(s){
     $(s).classList.toggle('hide', s!==id);
   });
   window.scrollTo(0,0);
@@ -1375,6 +1405,56 @@ function paintMe(){
 }
 $('btnMe').onclick      = function(){ paintMe(); show('scMe'); };
 $('btnHelpHome').onclick= function(){ show('scHelp'); };
+
+/* ---------- สุ่มตรวจ (หัวหน้าเวร / แอดมิน) ---------- */
+function paintInspCps(){
+  var box=$('inspList'); box.innerHTML='';
+  var p=S.pos;
+  $('inspPos').textContent = p ? ('พิกัดปัจจุบัน แม่นยำ ±'+Math.round(p.coords.accuracy)+' ม.')
+                               : 'กำลังอ่านพิกัด…';
+  S.boot.checkpoints.forEach(function(cp){
+    var d = p ? distM(p.coords.latitude,p.coords.longitude,cp.lat,cp.lng) : -1;
+    var on = S.inspCp && S.inspCp.cpId===cp.cpId;
+    var div=document.createElement('div');
+    div.className='cp'+(on?' done':'');
+    div.innerHTML='<div class="code">'+(on?'✓':cp.code)+'</div>'+
+      '<div class="grow"><strong>'+cp.name+'</strong>'+
+      '<div class="muted" style="font-size:14px">'+(d<0?'ยังไม่มีพิกัด':'ห่างจากจุดนี้ '+d+' ม.')+'</div></div>'+
+      (on?'<span class="pill ok">เลือกแล้ว</span>':'<span class="pill">แตะ</span>');
+    div.onclick=function(){ S.inspCp=cp; paintInspCps(); };
+    box.appendChild(div);
+  });
+}
+$('btnInspHome').onclick=function(){
+  S.inspCp=null; S.inspPhoto='';
+  $('inspNote').value=''; $('inspThumb').innerHTML='';
+  paintInspCps(); show('scInsp');
+  getPos().then(function(p){ S.pos=p; paintInspCps(); }).catch(function(){ paintInspCps(); });
+};
+$('btnBackInsp').onclick=function(){ show('scHome'); };
+$('btnInspPick').onclick=function(){ $('inspPhoto').click(); };
+$('inspPhoto').onchange=function(){
+  var f=this.files && this.files[0]; if(!f) return;
+  var self=this;
+  shrink(f,1280).then(function(d){
+    S.inspPhoto=d;
+    $('inspThumb').innerHTML='<img src="'+d+'" style="width:100%;border-radius:12px">';
+  }).then(function(){ self.value=''; });
+};
+$('btnInspSave').onclick=function(){
+  if(!S.inspCp) return toast('เลือกจุดที่ตรวจก่อนครับ');
+  var btn=this; btn.disabled=true; btn.textContent='กำลังบันทึก…';
+  var p=S.pos;
+  api('inspect',{ cpId:S.inspCp.cpId,
+    lat:p?p.coords.latitude:0, lng:p?p.coords.longitude:0,
+    accuracyM:p?Math.round(p.coords.accuracy):999,
+    note:$('inspNote').value.trim(), photo:S.inspPhoto })
+  .then(function(j){
+    toast('บันทึกการสุ่มตรวจแล้ว'+(j.distanceM>=0?' · ห่างจุด '+j.distanceM+' ม.':''), 4000);
+    show('scHome');
+  }).catch(function(e){ toast(e.message, 4000); })
+  .then(function(){ btn.disabled=false; btn.textContent='บันทึกการสุ่มตรวจ'; });
+};
 $('btnBackHelp').onclick= function(){ show('scHome'); };
 $('lnkHelpLogin').onclick=function(e){ e.preventDefault(); show('scHelp'); };
 $('btnBackMe').onclick  = function(){ show('scHome'); };
@@ -1449,14 +1529,14 @@ $('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
 
 /* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
 function curScreen(){
-  var ids=['scHome','scMe','scHelp','scRound','scCheck','scInc'];
+  var ids=['scHome','scMe','scHelp','scInsp','scRound','scCheck','scInc'];
   for(var i=0;i<ids.length;i++) if(!$(ids[i]).classList.contains('hide')) return ids[i];
   return '';
 }
 function goBack(){
   var c=curScreen();
   if(c==='scCheck'){ stopCam(); show('scRound'); toast('ย้อนกลับ'); }
-  else if(c==='scMe' || c==='scHelp'){ show('scHome'); }
+  else if(c==='scMe' || c==='scHelp' || c==='scInsp'){ show('scHome'); }
   else if(c==='scRound'||c==='scInc'){ loadHome(); toast('กลับหน้าหลัก'); }
 }
 function goForward(){
