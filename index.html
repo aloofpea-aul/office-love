@@ -53,6 +53,23 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .pill.warn{background:rgba(245,158,11,.18);color:#fcd34d}
 .pill.bad{background:rgba(239,68,68,.18);color:#fca5a5}
 .pill.live{background:rgba(139,92,246,.22);color:#c4b5fd}
+.ptcard{background:linear-gradient(135deg,#2c2059,#1e1b2b);border:1px solid #4c3f7a;
+  border-radius:var(--r);padding:16px;margin-bottom:14px}
+.ptlv{font-size:16px;font-weight:700;color:#c4b5fd}
+.ptbig{font-size:34px;font-weight:800;line-height:1.05}
+.ptbar{height:10px;background:#2a2540;border-radius:99px;overflow:hidden;margin-top:10px}
+.ptbar i{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,#8b5cf6,#a78bfa);transition:width .7s ease}
+.ptchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ptchip{font-size:13px;padding:3px 10px;border-radius:99px;background:#2a2540;color:#cdc5e8}
+.ptfloat{position:fixed;left:50%;top:36%;font-size:42px;font-weight:800;color:#c4b5fd;
+  text-shadow:0 2px 20px rgba(139,92,246,.75);z-index:99;pointer-events:none;
+  animation:ptup 1.4s ease-out forwards}
+@keyframes ptup{
+  0%{opacity:0;transform:translate(-50%,12px) scale(.7)}
+  18%{opacity:1;transform:translate(-50%,0) scale(1.12)}
+  55%{opacity:1;transform:translate(-50%,-16px) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-58px) scale(.95)}}
 .round{display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;
   background:var(--card2);border:1px solid var(--line);margin-bottom:10px;cursor:pointer}
 .round .no{width:44px;height:44px;border-radius:12px;background:var(--card);
@@ -213,6 +230,22 @@ a{color:var(--pri2)}
     <button class="btn-ghost btn-sm" id="btnLogout">ออก</button>
   </div></div>
   <div class="wrap">
+    <div id="ptCard" class="ptcard hide">
+      <div class="row between">
+        <div>
+          <div class="ptlv" id="ptLevel">—</div>
+          <div class="muted" style="font-size:13px" id="ptLife"></div>
+        </div>
+        <div style="text-align:right">
+          <div class="muted" style="font-size:13px">แต้มวันนี้</div>
+          <div class="ptbig" id="ptToday">0</div>
+        </div>
+      </div>
+      <div class="ptbar"><i id="ptBar"></i></div>
+      <div class="muted" style="font-size:13px;margin-top:6px" id="ptGoal"></div>
+      <div class="ptchips" id="ptChips"></div>
+    </div>
+
     <div class="card">
       <div class="row between">
         <div>
@@ -788,8 +821,48 @@ function loadHome(){
     j.categories.forEach(function(c){
       var o=document.createElement('option'); o.value=c.trim(); o.textContent=c.trim(); sel.appendChild(o);
     });
-    show('scHome'); qFlush();
+    show('scHome'); qFlush(); loadPoints();
   });
+}
+
+/* ========================= แต้มสะสม ========================= */
+function ptNum(n){ n=parseFloat(n); return isNaN(n)?0:Math.round(n); }
+function ptFmt(n){ return String(ptNum(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+function loadPoints(){
+  return api('myPoints').then(function(j){
+    paintPoints(j.points);
+  }).catch(function(){ /* แต้มพังต้องไม่ทำให้หน้าหลักพัง */ });
+}
+
+function paintPoints(p){
+  if(!p) return;
+  S.pt = p;
+  $('ptCard').classList.remove('hide');
+  $('ptLevel').textContent = 'ระดับ ' + p.level + ' · ' + p.levelName;
+  $('ptLife').textContent  = 'แต้มสะสม ' + ptFmt(p.lifetime) +
+    (p.levelNext ? '  · อีก ' + ptFmt(p.levelNext - p.lifetime) + ' ขึ้นระดับ ' + (p.level + 1)
+                 : '  · ระดับสูงสุดแล้ว');
+  $('ptToday').textContent = ptFmt(p.today);
+  var pct = p.goal ? Math.min(100, Math.round(p.month * 100 / p.goal)) : 0;
+  $('ptBar').style.width = pct + '%';
+  $('ptGoal').textContent = 'เป้าเดือนนี้ ' + ptFmt(p.month) + ' / ' + ptFmt(p.goal) + ' แต้ม (' + pct + '%)';
+  var c = [];
+  if(p.streak > 0)  c.push('🔥 ต่อเนื่อง ' + p.streak + ' ผลัด');
+  if(p.perfect)     c.push('✅ ผลัดสมบูรณ์');
+  if(p.roundsTotal) c.push('รอบครบ ' + p.roundsDone + '/' + p.roundsTotal);
+  if(p.incidents)   c.push('📸 รายงานเหตุ ' + p.incidents);
+  if(p.breakdown && p.breakdown.night) c.push('🌙 โบนัสกลางคืน +' + ptFmt(p.breakdown.night));
+  $('ptChips').innerHTML = c.map(function(t){
+    return '<span class="ptchip">' + t + '</span>';
+  }).join('');
+}
+
+function ptFloat(txt){
+  var d = document.createElement('div');
+  d.className = 'ptfloat'; d.textContent = txt;
+  document.body.appendChild(d);
+  setTimeout(function(){ if(d.parentNode) d.parentNode.removeChild(d); }, 1500);
 }
 
 /* ตรวจว่ายืนอยู่ในจุดลงเวลาเข้า-ออกเวรไหม
@@ -1263,6 +1336,11 @@ $('btnSaveCheckin').onclick=function(){
 
   api('checkin', body).then(function(j){
     finish('บันทึกแล้ว ('+j.pointsDone+'/'+j.pointsTotal+' จุด)');
+    var before = (S.pt && S.pt.today) || 0;
+    loadPoints().then(function(){
+      var d = ((S.pt && S.pt.today) || 0) - before;
+      if(d > 0) ptFloat('+' + d + ' ✨');
+    });
   }).catch(function(e){
     if(/Failed to fetch|NetworkError/i.test(e.message)){
       qAdd({ action:'checkin', body:body }).then(function(){
