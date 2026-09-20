@@ -81,6 +81,7 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .shop .cost{font-weight:800;color:#c4b5fd;white-space:nowrap}
 .shop button{width:auto;padding:8px 14px;font-size:15px;margin:0}
 .hist{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}
+.stclock{font-size:30px;font-weight:800;color:#c4b5fd;text-align:center;margin:6px 0 2px}
 @keyframes ptup{
   0%{opacity:0;transform:translate(-50%,12px) scale(.7)}
   18%{opacity:1;transform:translate(-50%,0) scale(1.12)}
@@ -414,7 +415,32 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>4. เดินตรวจแต่ละรอบ</summary>
+    <details><summary>4. รอบประจำจุด C — 08:00 / 12:00 / 15:00 (วันทำการ)</summary>
+      <div class="bd">
+        <p>วันทำการมีรอบพิเศษ 3 รอบ ที่ <b>ไม่ใช่การเดินตรวจ</b> แต่เป็นการ
+           <b>ยืนประจำจุด C ภายในอาคารสำนักงาน</b> เพื่อดูแลความปลอดภัยและอำนวยความสะดวก
+           ให้ผู้มาติดต่อและพนักงานในช่วงเวลาทำการ</p>
+        <ol>
+          <li>ถึงเวลา แตะรอบที่มีไอคอน 🪑 ในหน้าหลัก</li>
+          <li>ไปยืนที่จุด C แล้วกด <b>เริ่มประจำจุด</b> ถ่ายรูป 1 ใบตามปกติ</li>
+          <li>ระบบจะขึ้นนาฬิกานับเวลาให้เห็น เช่น <b>23 นาที</b></li>
+          <li>อยู่ประจำจุดให้ครบ <b>อย่างน้อย 60 นาที</b></li>
+          <li>ครบเวลาแล้วปุ่ม <b>จบการประจำจุด</b> จะกดได้ กดแล้วรอบนั้นถือว่าเสร็จ</li>
+        </ol>
+        <div class="ok">ขากลับ <b>ไม่ต้องถ่ายรูปซ้ำ</b> กดจบได้เลย</div>
+        <div class="warn">กดจบก่อนครบเวลาไม่ได้ ระบบจะบอกว่าเหลืออีกกี่นาที
+          · อยู่<b>นานกว่า</b> 60 นาทีได้ตามสะดวก ไม่มีเพดาน</div>
+        <div class="bad"><b>ถ้ากดเริ่มแล้วไม่กดจบเลย</b> รอบนั้นจะขึ้นว่าไม่ครบ
+          และระบบแจ้งหัวหน้าเวรอัตโนมัติ ถือเป็นการละทิ้งจุดกลางคัน</div>
+        <p>ปิดแอปหรือสลับไปทำอย่างอื่นได้ เวลายังเดินต่อ เพราะนับจากเวลาที่บันทึกไว้บนเซิร์ฟเวอร์
+           ไม่ได้นับในเครื่อง</p>
+        <div class="ok">จุด C อยู่ในอาคาร สัญญาณดาวเทียมอ่อนเป็นปกติ
+          ระบบจึงผ่อนระยะให้กว้างกว่ารอบเดินตรวจ และการยืนยันด้วยตนเองในรอบนี้
+          <b>ไม่ถูกนับเข้าโควตา 3 ครั้งต่อเดือน</b></div>
+      </div>
+    </details>
+
+    <details><summary>5. เดินตรวจแต่ละรอบ</summary>
       <div class="bd">
         <ol>
           <li>หน้าหลักจะมีรายการรอบทั้งหมดของวัน แตะรอบที่ถึงเวลา</li>
@@ -429,7 +455,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>5. รอบกลางดึก 00:00–06:00 (รอบยืดหยุ่น)</summary>
+    <details><summary>6. รอบกลางดึก 00:00–06:00 (รอบยืดหยุ่น)</summary>
       <div class="bd">
         <p>สองรอบสุดท้ายของกะ <b>ไม่มีเวลาตายตัว</b> เดินเมื่อไหร่ก็ได้ ขอแค่ครบ 2 รอบ
            ภายในช่วงหลังเที่ยงคืนถึงหกโมงเช้า</p>
@@ -440,9 +466,11 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>6. รอบที่ขึ้น 🔒 ล็อค คืออะไร</summary>
+    <details><summary>7. รอบที่ขึ้น 🔒 ล็อค คืออะไร</summary>
       <div class="bd">
-        <p>รอบที่เลยเวลามาแล้วเกิน 1 ชั่วโมง ระบบจะปิดรับการบันทึก เพื่อไม่ให้ย้อนหลังได้</p>
+        <p>รอบเดินตรวจที่เลยเวลามาแล้วเกิน 1 ชั่วโมง ระบบจะปิดรับการบันทึก เพื่อไม่ให้ย้อนหลังได้</p>
+        <p><b>รอบประจำจุด</b> เผื่อเวลาให้มากกว่า เพราะต้องยืนครบชั่วโมงก่อน จึงปิดที่
+           เวลานัด + 60 นาที + ผ่อนผันอีก 30 นาที เช่น รอบ 08:00 ปิด 09:30 น.</p>
         <ul>
           <li>ในรายการรอบจะเห็นรูป 🔒 และป้ายสีแดงว่า "ล็อค" พร้อมเวลาที่ปิด</li>
           <li>กดเข้าไปดูได้ แต่บันทึกไม่ได้</li>
@@ -452,7 +480,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>7. แจ้งเหตุผิดปกติ</summary>
+    <details><summary>8. แจ้งเหตุผิดปกติ</summary>
       <div class="bd">
         <ol>
           <li>กดปุ่ม <b>⚠️ แจ้งเหตุผิดปกติ</b> ได้จากหน้าหลักหรือหน้ารอบ</li>
@@ -464,14 +492,14 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>8. จบกะ — ลงเวลาออกเวร</summary>
+    <details><summary>9. จบกะ — ลงเวลาออกเวร</summary>
       <div class="bd">
         <p>กลับมาที่จุดลงเวลา กดปุ่ม <b>ออกเวร</b> ที่หน้าหลัก แล้วยืนยัน</p>
         <div class="warn">อย่าลืมกดออกเวรทุกครั้ง ไม่งั้นระบบจะคิดว่ายังอยู่ในเวรอยู่</div>
       </div>
     </details>
 
-    <details><summary>9. ไม่มีสัญญาณอินเทอร์เน็ต ทำยังไง</summary>
+    <details><summary>10. ไม่มีสัญญาณอินเทอร์เน็ต ทำยังไง</summary>
       <div class="bd">
         <p><b>เดินตรวจต่อได้ตามปกติ</b> ระบบเก็บรายการไว้ในเครื่องก่อน</p>
         <ul>
@@ -483,7 +511,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>10. ปัญหาที่พบบ่อย</summary>
+    <details><summary>11. ปัญหาที่พบบ่อย</summary>
       <div class="bd">
         <p><b>ขึ้นแถบแดงว่าเปิดจาก LINE</b><br>
            ทำตามหัวข้อที่ 1 — ต้องย้ายไปเปิดใน Chrome ไม่งั้นกล้องกับเข็มทิศใช้ไม่ได้</p>
@@ -501,7 +529,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>11. มือถือที่ใช้งานได้ดี</summary>
+    <details><summary>12. มือถือที่ใช้งานได้ดี</summary>
       <div class="bd">
         <p>แอปนี้ใช้ <b>เซ็นเซอร์เข็มทิศ</b> ในการตรวจว่าหันกล้องถูกทิศหรือไม่
            มือถือราคาประหยัดหลายรุ่น <b>ตัดเซ็นเซอร์ตัวนี้ออก</b> เพื่อลดต้นทุน</p>
@@ -537,7 +565,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>12. แก้ข้อมูลส่วนตัวและรหัสผ่าน</summary>
+    <details><summary>13. แก้ข้อมูลส่วนตัวและรหัสผ่าน</summary>
       <div class="bd">
         <p>แตะ <b>ชื่อตัวเองมุมซ้ายบน</b>ของหน้าหลัก จะเข้าหน้าข้อมูลส่วนตัว แก้ได้ 3 อย่าง</p>
         <ul>
@@ -548,6 +576,73 @@ a{color:var(--pri2)}
         <div class="warn">ควรเปลี่ยนรหัสผ่านเป็นของตัวเองตั้งแต่วันแรก
           เพราะรหัสตั้งต้นเป็นเบอร์โทรซึ่งคนอื่นเดาได้ง่าย</div>
         <p>ส่วนชื่อ-สกุลและสิทธิ์การใช้งาน ต้องให้ผู้ดูแลระบบแก้ให้</p>
+      </div>
+    </details>
+
+    <details><summary>14. แต้มสะสม — ได้แต้มจากอะไรบ้าง</summary>
+      <div class="bd">
+        <p>ทุกอย่างที่ทำในแอปจะกลายเป็นแต้ม การ์ดสีม่วงบนสุดของหน้าหลักคือแต้มของวันนี้</p>
+        <table style="width:100%;border-collapse:collapse;font-size:15px">
+          <tr><td>ลงเวลาเข้าเวรตรงเวลา</td><td style="text-align:right"><b>+10</b></td></tr>
+          <tr><td>ลงเวลาเข้าเวรแต่สาย</td><td style="text-align:right">+5</td></tr>
+          <tr><td>ลงเวลาออกเวร</td><td style="text-align:right">+5</td></tr>
+          <tr><td>แต่ละจุดตรวจที่บันทึกผ่าน</td><td style="text-align:right">+1</td></tr>
+          <tr><td>ทำรอบครบทุกจุด</td><td style="text-align:right">+5</td></tr>
+          <tr><td>รอบประจำจุดที่อยู่ครบเวลา</td><td style="text-align:right"><b>+3</b> (รวมเป็น 10)</td></tr>
+          <tr><td>รายงานเหตุผิดปกติพร้อมภาพ</td><td style="text-align:right"><b>+15</b></td></tr>
+          <tr><td>รอบกลางคืนก่อน 06:00</td><td style="text-align:right"><b>คูณ 1.5</b></td></tr>
+          <tr><td>ทำครบทุกรอบทั้งผลัด</td><td style="text-align:right"><b>+20</b></td></tr>
+        </table>
+        <p style="margin-top:10px"><b>โบนัสต่อเนื่อง</b> ทำครบทั้งผลัดติดกัน
+          3 ผลัด +50 · 7 ผลัด +150 · 15 ผลัด +400 · 30 ผลัด +1,000</p>
+        <div class="ok">วันทำการเต็ม ๆ ได้ราว <b>149 แต้ม</b> วันหยุดราว <b>163 แต้ม</b>
+          เดือนหนึ่งประมาณ 2,800–2,900 แต้ม</div>
+        <div class="warn"><b>การยืนยันด้วยตนเอง</b> ถ้ามีเหตุจริงตามที่เลือกไว้ ได้แต้มเต็มเหมือนเดิม
+          แต่รอบเดินตรวจจำกัดไว้ 3 ครั้งต่อเดือน เกินจากนั้นรอบนั้นจะไม่ได้แต้ม
+          (รอบประจำจุด C ไม่นับรวม)</div>
+        <div class="bad">แต้มจะถูกหักหรือยกเลิกเฉพาะกรณีความบกพร่องร้ายแรงตามข้อตกลงการปฏิบัติงาน
+          และทุกครั้งจะมีเหตุผลกำกับให้ดูย้อนหลังได้ ไม่มีการหักเงียบ ๆ</div>
+      </div>
+    </details>
+
+    <details><summary>15. ระดับและเหรียญตรา</summary>
+      <div class="bd">
+        <p>แตะปุ่ม <b>🏅 เหรียญตราและร้านแลกแต้ม</b> บนการ์ดแต้ม เพื่อดูหน้ารางวัลของตัวเอง</p>
+        <p><b>ระดับ</b> — ไต่ขึ้นอย่างเดียว ไม่มีวันลด แม้จะเอาแต้มไปแลกของแล้วก็ตาม</p>
+        <table style="width:100%;border-collapse:collapse;font-size:15px">
+          <tr><td>ระดับ 1 ยามใหม่</td><td style="text-align:right">เริ่มต้น</td></tr>
+          <tr><td>ระดับ 2 ยามชำนาญ</td><td style="text-align:right">2,800</td></tr>
+          <tr><td>ระดับ 3 ยามอาวุโส</td><td style="text-align:right">9,000</td></tr>
+          <tr><td>ระดับ 4 ยามผู้พิทักษ์</td><td style="text-align:right">20,000</td></tr>
+          <tr><td>ระดับ 5 ยามตำนาน</td><td style="text-align:right">34,000</td></tr>
+        </table>
+        <p style="margin-top:10px"><b>เหรียญตรา 6 ใบ</b> สะสมได้ตลอดชีพ</p>
+        <ul>
+          <li>🌙 <b>นักรบราตรี</b> — เดินรอบกลางคืนครบ 30 รอบ</li>
+          <li>🎯 <b>แม่นเป๊ะ</b> — บันทึก 100 จุดติดกันโดยไม่ต้องยืนยันเอง</li>
+          <li>📸 <b>ตาไว</b> — รายงานเหตุผิดปกติครบ 10 ครั้ง</li>
+          <li>⏱ <b>ตรงเวลา</b> — เข้าเวรตรงเวลา 20 ผลัดติด</li>
+          <li>🛡 <b>ยามเหล็ก</b> — ทำผลัดสมบูรณ์ครบ 100 ผลัด</li>
+          <li>🥇 <b>ยอดเยี่ยมประจำเดือน</b> — ทำแต้มถึงเป้าของเดือนนั้น</li>
+        </ul>
+        <div class="ok"><b>เป้าทีม</b> แถบล่างของการ์ดคือแต้มของ รปภ. ทุกคนรวมกัน
+          ถึงเป้าเมื่อไหร่มีรางวัลให้ทั้งทีม — ช่วยกันได้แต้มเร็วกว่าต่างคนต่างทำ</div>
+      </div>
+    </details>
+
+    <details><summary>16. ร้านแลกแต้ม</summary>
+      <div class="bd">
+        <p>อยู่ในหน้า <b>รางวัลของฉัน</b> เลื่อนลงมาจะเห็นรายการของรางวัล</p>
+        <ol>
+          <li>กดปุ่ม <b>แลก</b> ข้างของที่ต้องการ (ของที่แต้มยังไม่พอจะบอกว่าขาดอีกเท่าไร)</li>
+          <li>ยืนยัน แต้มจะถูกตัดทันที</li>
+          <li><b>แจ้งหัวหน้าเวร</b> เพื่อรับของ</li>
+          <li>ดูสถานะได้ที่หัวข้อประวัติการแลก — รอรับของ / รับแล้ว / ยกเลิก</li>
+        </ol>
+        <div class="ok"><b>แต้มที่ใช้แลกไม่ทำให้ระดับลดลง</b> ระดับคิดจากแต้มที่ทำได้ทั้งหมด
+          ส่วนช่อง "แต้มคงเหลือ" คือแต้มที่ใช้แลกของได้</div>
+        <div class="warn">ถ้ายกเลิกรายการแลก ระบบ<b>คืนแต้มให้อัตโนมัติ</b></div>
+        <p>ทุกวันจันทร์เช้า ระบบจะสรุปแต้มของสัปดาห์ที่ผ่านมาส่งเข้าห้องแชทให้ทุกคนเห็น</p>
       </div>
     </details>
 
@@ -875,7 +970,7 @@ function loadHome(){
     $('meRole').textContent=({GUARD:'พนักงานรักษาความปลอดภัย',SUPERVISOR:'หัวหน้าเวร',ADMIN:'ผู้ดูแลระบบ'})[j.user.role]||j.user.role;
     $('wdText').textContent=thaiDate(j.workDate);
     var p=$('dayTypePill');
-    p.textContent=j.dayType==='HOLIDAY'?'วันหยุด · 10 รอบ':'วันทำการ · 6 รอบ';
+    p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+' · '+((j.rounds&&j.rounds.length)||0)+' รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
     paintMe(); paintShift(); paintRounds(); startReminder();
     var staff = j.user.role==='SUPERVISOR' || j.user.role==='ADMIN';
@@ -1065,8 +1160,20 @@ function roundClosed(r){
 }
 
 /* ป้ายเวลาของรอบ — รอบยืดหยุ่นแสดงเป็นช่วงเวลาแทนเวลานัด */
+function isStation(r){ return !!r && String(r.mode||'')==='STATION'; }
+function stayMin(r){ return (r && r.minStayMin) || 60; }
+function hhmmMs(ms){ var d=new Date(ms); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+
 function rlabel(r){
+  if(isStation(r)) return hhmm(r.schedAt)+' น. · ประจำจุด '+(r.cpCodes||'C')+' '+stayMin(r)+' นาที';
   return r.flex ? ('ช่วง '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น.') : (hhmm(r.schedAt)+' น.');
+}
+
+/* จุดตรวจที่รอบนี้อนุญาต — ว่าง = ทุกจุด */
+function allowedCps(r){
+  var codes=String((r&&r.cpCodes)||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+  if(!codes.length) return S.boot.checkpoints;
+  return S.boot.checkpoints.filter(function(cp){ return codes.indexOf(cp.code)>=0; });
 }
 
 function roundState(r){
@@ -1080,6 +1187,14 @@ function roundState(r){
     var left=Math.round((close-now)/60000);
     if(left<=60) return {k:'warn', t:'เหลือ '+left+' นาที'};
     return {k:'live', t:'เดินได้ · เหลือ '+Math.floor(left/60)+' ชม.'};
+  }
+  if(isStation(r)){
+    if(r.inAt){
+      var m=Math.floor((now-new Date(r.inAt).getTime())/60000), need=stayMin(r);
+      if(m<need) return {k:'live', t:'ประจำอยู่ '+m+'/'+need+' นาที'};
+      return {k:'warn', t:'ครบเวลาแล้ว — กดจบ'};
+    }
+    return {k:'live', t:'ถึงเวลาเข้าประจำจุด'};
   }
   var late=now-new Date(r.schedAt).getTime();
   if(late>15*60000)         return {k:'warn',t:'สาย '+Math.round(late/60000)+' นาที'};
@@ -1095,7 +1210,7 @@ function paintRounds(){
     div.className='round'+(st.k==='live'?' cur':'')+(lock?' locked':'');
     var dots='';
     for(var i=0;i<r.pointsTotal;i++) dots+='<span class="dot'+(i<r.pointsDone?' on':'')+'"></span>';
-    div.innerHTML='<div class="no">'+(lock?'🔒':r.roundNo)+'</div>'+
+    div.innerHTML='<div class="no">'+(lock?'🔒':(isStation(r)?'🪑':r.roundNo))+'</div>'+
       '<div class="grow"><strong>'+rlabel(r)+'</strong>'+
       (lock?'<div class="muted" style="font-size:14px">ปิดรับบันทึกแล้วเมื่อ '+hhmm(r.closeAt)+' น.</div>':'')+
       '<div class="dots">'+dots+'</div></div>'+
@@ -1197,8 +1312,8 @@ function startReminder(){
 
 /* ========================= รอบ ========================= */
 function openRound(r){
-  S.round=r;
-  $('roundTitle').textContent='รอบ '+r.roundNo+' · '+rlabel(r);
+  S.round=r; S.stationOut=false; S.noPhoto=false;
+  $('roundTitle').textContent=(isStation(r)?'ประจำจุด':'รอบ '+r.roundNo)+' · '+rlabel(r);
   var st=roundState(r);
   var b=$('roundBanner');
   if(roundClosed(r))     b.innerHTML='<div class="banner bad">🔒 รอบนี้ปิดแล้วเมื่อ '+hhmm(r.closeAt)+
@@ -1207,6 +1322,8 @@ function openRound(r){
   else if(st.k==='')     b.innerHTML='<div class="banner warn">รอบนี้เริ่มได้ตั้งแต่ '+hhmm(r.openAt)+' น.</div>';
   else if(r.flex)        b.innerHTML='<div class="banner '+(st.k==='warn'?'warn':'ok')+'">รอบยืดหยุ่น — '+
                            'เดินเมื่อไหร่ก็ได้ภายใน '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น. ('+st.t+')</div>';
+  else if(isStation(r)) b.innerHTML='<div class="banner ok">รอบประจำจุด — กด “เริ่มประจำจุด” เมื่อถึงจุด '+
+                           (r.cpCodes||'C')+' อยู่ให้ครบ '+stayMin(r)+' นาที แล้วกด “จบการประจำจุด” ปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
   else if(st.k==='warn') b.innerHTML='<div class="banner warn">'+st.t+' รีบเดินให้ครบก่อนปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
   else                   b.innerHTML='<div class="banner ok">เดินได้เลย ปิดรอบ '+hhmm(r.closeAt)+' น.</div>';
   paintCps(); show('scRound');
@@ -1214,10 +1331,61 @@ function openRound(r){
 
 function doneIn(roundId){ return (S.boot.done&&S.boot.done[roundId])||[]; }
 
+var ST_TIMER=null;
+
+function paintStation(box, r, closed){
+  clearInterval(ST_TIMER);
+  var list=allowedCps(r), cp=list[0];
+  if(!cp){ box.innerHTML='<div class="banner bad">ยังไม่ได้ตั้งจุด '+(r.cpCodes||'')+' ในระบบ</div>'; return; }
+  var need=stayMin(r);
+  var inMs = r.inAt ? new Date(r.inAt).getTime() : 0;
+  var outMs= r.outAt ? new Date(r.outAt).getTime() : 0;
+
+  var html='<div class="cp"><div class="code">'+cp.code+'</div>'+
+    '<div class="grow"><strong>'+cp.name+'</strong>'+
+    '<div class="muted" style="font-size:14px">ต้องประจำอยู่อย่างน้อย '+need+' นาที</div></div></div>';
+
+  if(outMs){
+    html+='<div class="banner ok">✅ เสร็จเรียบร้อย — ประจำจุด '+Math.round((outMs-inMs)/60000)+
+          ' นาที ('+hhmm(r.inAt)+'–'+hhmm(r.outAt)+' น.)</div>';
+    box.innerHTML=html; return;
+  }
+  if(inMs){
+    html+='<div class="stclock" id="stClock">—</div>'+
+          '<div class="banner warn" id="stBar">กำลังนับเวลา…</div>'+
+          '<button id="btnStOut" disabled>จบการประจำจุด</button>';
+    box.innerHTML=html;
+    var tick=function(){
+      var bar=$('stBar'); if(!bar){ clearInterval(ST_TIMER); return; }
+      var m=Math.floor((Date.now()-inMs)/60000), left=need-m, btn=$('btnStOut');
+      $('stClock').textContent=m+' นาที';
+      if(left>0){
+        bar.className='banner warn';
+        bar.textContent='เริ่ม '+hhmm(r.inAt)+' น. · ครบเวลา '+hhmmMs(inMs+need*60000)+' น. เหลืออีก '+left+' นาที';
+        if(btn){ btn.disabled=true; btn.textContent='ยังกดจบไม่ได้ — เหลือ '+left+' นาที'; }
+      }else{
+        bar.className='banner ok';
+        bar.textContent='ครบ '+need+' นาทีแล้ว — จะอยู่ต่อก็ได้ กดจบเมื่อพร้อม';
+        if(btn){ btn.disabled=false; btn.textContent='จบการประจำจุด'; }
+      }
+      if(closed && btn){ btn.disabled=true; btn.textContent='🔒 รอบนี้ปิดแล้ว'; }
+    };
+    tick(); ST_TIMER=setInterval(tick, 10000);
+    $('btnStOut').onclick=function(){ S.stationOut=true; openCheck(cp); };
+    return;
+  }
+  html+= closed ? '<div class="banner bad">🔒 รอบนี้ปิดแล้ว — บันทึกไม่ได้</div>'
+                : '<button id="btnStIn">เริ่มประจำจุด</button>';
+  box.innerHTML=html;
+  if(!closed) $('btnStIn').onclick=function(){ S.stationOut=false; openCheck(cp); };
+}
+
 function paintCps(){
   var box=$('cpList'); box.innerHTML='';
   var done=doneIn(S.round.roundId), closed=roundClosed(S.round);
-  S.boot.checkpoints.forEach(function(cp){
+  if(isStation(S.round)){ paintStation(box, S.round, closed); return; }
+  clearInterval(ST_TIMER);
+  allowedCps(S.round).forEach(function(cp){
     var isDone=done.indexOf(cp.cpId)>=0;
     var div=document.createElement('div');
     div.className='cp'+(isDone?' done':'');
@@ -1235,9 +1403,10 @@ function paintCps(){
 /* ========================= เช็คอิน ========================= */
 function openCheck(cp){
   S.cp=cp; S.photos=[];
-  $('cpTitle').textContent=cp.code+' · '+cp.name;
+  S.noPhoto = !!S.stationOut;                                // ขากลับของรอบประจำจุด ไม่ต้องถ่ายซ้ำ
+  $('cpTitle').textContent=(S.stationOut?'จบการประจำจุด · ':'')+cp.code+' · '+cp.name;
   S.headingOverride='';
-  var useCam = !!cp.requirePhoto || cp.photoHeading!=null;   // จุดที่บังคับทิศต้องเห็นกล้องเสมอ
+  var useCam = !S.noPhoto && (!!cp.requirePhoto || cp.photoHeading!=null);   // จุดที่บังคับทิศต้องเห็นกล้องเสมอ
   $('photoCard').classList.toggle('hide', !useCam);
   $('photoReq').textContent = cp.photoHeading!=null ? 'บังคับทิศ ±'+cp.headingTol+'°' : 'ดูมุมอย่างเดียว';
   $('photoReq').className = 'pill '+(cp.photoHeading!=null?'warn':'');
@@ -1379,6 +1548,7 @@ function paintCompass(){
 /* จุดที่แอดมินตั้งองศาไว้ ต้องหันให้อยู่ในช่วงที่ยอมรับก่อนจึงจะกดบันทึกได้ */
 function headingState(){
   var cp=S.cp;
+  if(S.noPhoto)                    return { need:false, ok:true };
   if(!cp || cp.photoHeading==null) return { need:false, ok:true };
   if(S.headingOverride)            return { need:true, ok:true, overridden:true };
   if(S.heading==null)              return { need:true, ok:false, noRead:true };
@@ -1478,6 +1648,25 @@ $('btnSaveCheckin').onclick=function(){
   }
 
   api('checkin', body).then(function(j){
+    if(j.mode==='STATION'){
+      stopCam();
+      var msg = j.phase==='IN' ? 'เริ่มประจำจุดแล้ว — ระบบกำลังจับเวลา'
+                               : 'จบการประจำจุดเรียบร้อย';
+      toast(msg, 3500);
+      S.stationOut=false; S.noPhoto=false;
+      var rid=S.round.roundId;
+      loadHome().then(function(){
+        var back=null;
+        (S.boot.rounds||[]).forEach(function(x){ if(x.roundId===rid) back=x; });
+        if(back) openRound(back);
+      });
+      var b0=(S.pt&&S.pt.today)||0;
+      loadPoints().then(function(){
+        var d0=((S.pt&&S.pt.today)||0)-b0;
+        if(d0>0) ptFloat('+'+d0+' ✨');
+      });
+      return;
+    }
     finish('บันทึกแล้ว ('+j.pointsDone+'/'+j.pointsTotal+' จุด)');
     var before = (S.pt && S.pt.today) || 0;
     loadPoints().then(function(){
