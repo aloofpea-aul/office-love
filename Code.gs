@@ -537,9 +537,16 @@ function remindRounds() {
       if (t === 'ROUND_REMIND' || t === 'ROUND_LATE') already[t + '|' + String(n.refId)] = true;
     });
 
+    // เตือนเฉพาะวันที่มี รปภ. ลงเวลาเข้าเวรและยังไม่ออกเวร
+    var onDuty = {};
+    readTable('Shifts').forEach(function (s) {
+      if (!s.checkOutAt) onDuty[dstr(s.workDate)] = true;
+    });
+
     var sent = 0;
     readTable('Rounds').forEach(function (r) {
       if (String(r.status) !== 'PENDING' || r.startedAt) return;
+      if (!onDuty[dstr(r.workDate)]) return;
       var id    = String(r.roundId);
       var sched = parseIso(r.schedAt);
       var close = parseIso(r.closeAt);
@@ -696,6 +703,15 @@ function apiCheckin(me, req) {
     for (var i = 0; i < rounds.length; i++) if (String(rounds[i].roundId) === roundId) round = rounds[i];
     if (!round) return err('ไม่พบรอบเดินตรวจนี้');
     assertUnlocked(dstr(round.workDate));
+
+    // เลยเวลาปิดรอบแล้วบันทึกไม่ได้ — ยกเว้นรายการที่ค้างอยู่ในคิวออฟไลน์
+    // (เทียบเวลาที่เครื่องบันทึกไว้ตอนเดินจริง ถ้ายังอยู่ในช่วงก็ให้ผ่าน)
+    var closeMs = parseIso(round.closeAt).getTime();
+    var cts     = new Date(String(req.clientTs || '')).getTime();
+    var atMs    = isNaN(cts) ? Date.now() : Math.min(cts, Date.now());
+    if (atMs > closeMs)
+      return err('รอบที่ ' + num(round.roundNo) + ' ปิดไปแล้วเมื่อ ' +
+                 fmt(parseIso(round.closeAt), 'HH:mm') + ' น. — บันทึกไม่ได้');
 
     // กันเช็คอินซ้ำจุดเดิมในรอบเดียวกัน
     var already = readTable('Checkins').some(function (c) {
