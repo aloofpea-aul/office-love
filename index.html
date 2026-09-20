@@ -73,6 +73,8 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .back{background:none;width:auto;font-size:17px;color:var(--pri2);
   display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;margin:-10px 0 -10px -16px}
 .hide{display:none!important}
+.round.locked{opacity:.55}
+.round.locked .no{background:var(--card2);color:var(--bad)}
 .banner{padding:12px 14px;border-radius:12px;font-size:16px;margin-bottom:12px}
 .banner.warn{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4)}
 .banner.bad{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4)}
@@ -102,7 +104,20 @@ a{color:var(--pri2)}
 <div id="qbar" class="queue hide"></div>
 
 <!-- ───────────── เข้าสู่ระบบ ───────────── -->
-<section id="scLogin" class="wrap">
+<!-- ───────────── กำลังเข้าระบบ (ค้างล็อกอินไว้) ───────────── -->
+<section id="scSplash" class="wrap hide">
+  <div style="text-align:center;margin:90px 0 0">
+    <div style="font-size:52px">🛡️</div>
+    <h1>Office Love</h1>
+    <p class="muted" id="splashMsg">กำลังเข้าสู่ระบบ…</p>
+    <div style="height:18px"></div>
+    <button id="btnSplashRetry" class="btn-ghost btn-sm hide">ลองเชื่อมต่ออีกครั้ง</button>
+    <div style="height:10px"></div>
+    <button id="btnSplashLogout" class="btn-ghost btn-sm hide">เข้าสู่ระบบด้วยชื่อผู้ใช้อื่น</button>
+  </div>
+</section>
+
+<section id="scLogin" class="wrap hide">
   <div style="text-align:center;margin:40px 0 24px">
     <div style="font-size:52px">🛡️</div>
     <h1>Office Love</h1>
@@ -241,7 +256,7 @@ var $ = function(id){ return document.getElementById(id); };
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
 function show(id){
-  ['scLogin','scHome','scRound','scCheck','scInc'].forEach(function(s){
+  ['scSplash','scLogin','scHome','scRound','scCheck','scInc'].forEach(function(s){
     $(s).classList.toggle('hide', s!==id);
   });
   window.scrollTo(0,0);
@@ -423,6 +438,7 @@ $('btnLogout').onclick=function(){
 function loadHome(){
   return api('bootstrap').then(function(j){
     S.boot=j; S.me=j.user;
+    if(j.token){ S.token=j.token; try{ localStorage.setItem('ol_token', j.token); }catch(e){} }
     $('meName').textContent=j.user.name;
     $('meRole').textContent=({GUARD:'พนักงานรักษาความปลอดภัย',SUPERVISOR:'หัวหน้าเวร',ADMIN:'ผู้ดูแลระบบ'})[j.user.role]||j.user.role;
     $('wdText').textContent=thaiDate(j.workDate);
@@ -520,14 +536,16 @@ function paintRounds(){
   var box=$('roundList'); box.innerHTML='';
   S.boot.rounds.forEach(function(r){
     var st=roundState(r);
+    var lock=roundClosed(r) && r.status!=='COMPLETE';
     var div=document.createElement('div');
-    div.className='round'+(st.k==='live'?' cur':'');
+    div.className='round'+(st.k==='live'?' cur':'')+(lock?' locked':'');
     var dots='';
     for(var i=0;i<r.pointsTotal;i++) dots+='<span class="dot'+(i<r.pointsDone?' on':'')+'"></span>';
-    div.innerHTML='<div class="no">'+r.roundNo+'</div>'+
+    div.innerHTML='<div class="no">'+(lock?'🔒':r.roundNo)+'</div>'+
       '<div class="grow"><strong>'+rlabel(r)+'</strong>'+
+      (lock?'<div class="muted" style="font-size:14px">ปิดรับบันทึกแล้วเมื่อ '+hhmm(r.closeAt)+' น.</div>':'')+
       '<div class="dots">'+dots+'</div></div>'+
-      '<span class="pill '+st.k+'">'+st.t+'</span>';
+      '<span class="pill '+(lock?'bad':st.k)+'">'+(lock?'ล็อค':st.t)+'</span>';
     div.onclick=function(){ openRound(r); };
     box.appendChild(div);
   });
@@ -949,9 +967,76 @@ $('btnSendInc').onclick=function(){
   });
 };
 
-/* ========================= ปุ่มย้อนกลับ ========================= */
+/* ========================= ค้างล็อกอิน =========================
+   เข้าระบบค้างไว้ตลอด — หลุดได้กรณีเดียวคือกดออกจากระบบ
+   เน็ตไม่ดี/เซิร์ฟเวอร์ยังไม่ตื่น จะวนลองใหม่เองเรื่อย ๆ ไม่เด้งไปหน้าล็อกอิน */
+function resume(n){
+  $('btnSplashRetry').classList.add('hide');
+  $('splashMsg').textContent = n>1 ? ('กำลังเชื่อมต่อ… (ครั้งที่ '+n+')') : 'กำลังเข้าสู่ระบบ…';
+  loadHome().catch(function(e){
+    if(isAuthErr(e)){
+      S.token=''; try{ localStorage.removeItem('ol_token'); }catch(_){}
+      show('scLogin'); $('loginMsg').textContent='เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่';
+      return;
+    }
+    $('splashMsg').textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ยังไม่ได้ออกจากระบบนะครับ';
+    $('btnSplashRetry').classList.remove('hide');
+    $('btnSplashLogout').classList.remove('hide');
+    setTimeout(function(){
+      if(!$('scSplash').classList.contains('hide')) resume(n+1);
+    }, Math.min(30000, 3000*n));
+  });
+}
+$('btnSplashRetry').onclick=function(){ resume(1); };
+$('btnSplashLogout').onclick=function(){
+  S.token=''; try{ localStorage.removeItem('ol_token'); }catch(e){}
+  show('scLogin');
+};
+
+/* ========================= ปุ่มย้อนกลับ + ปัดหน้าจอ ========================= */
 $('btnBackHome').onclick=function(){ loadHome(); };
 $('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
+
+/* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
+function curScreen(){
+  var ids=['scHome','scRound','scCheck','scInc'];
+  for(var i=0;i<ids.length;i++) if(!$(ids[i]).classList.contains('hide')) return ids[i];
+  return '';
+}
+function goBack(){
+  var c=curScreen();
+  if(c==='scCheck'){ stopCam(); show('scRound'); toast('ย้อนกลับ'); }
+  else if(c==='scRound'||c==='scInc'){ loadHome(); toast('กลับหน้าหลัก'); }
+}
+function goForward(){
+  var c=curScreen();
+  if(c==='scHome'){
+    var r=nextRound();
+    if(r && !roundClosed(r)) openRound(r); else toast('ยังไม่มีรอบที่เดินได้ตอนนี้');
+  }else if(c==='scRound'){
+    if(roundClosed(S.round)) { toast('รอบนี้ปิดแล้ว'); return; }
+    var done=doneIn(S.round.roundId);
+    var next=S.boot.checkpoints.filter(function(cp){ return done.indexOf(cp.cpId)<0; })[0];
+    if(next) openCheck(next); else toast('เดินครบทุกจุดแล้ว');
+  }
+}
+(function swipe(){
+  var x0=0,y0=0,t0=0,ok=false;
+  document.addEventListener('touchstart',function(e){
+    if(e.touches.length!==1){ ok=false; return; }
+    var el=e.target;
+    if(el.closest && el.closest('input,textarea,select,button,video,.cp,.round')){ ok=false; return; }
+    var t=e.touches[0]; x0=t.clientX; y0=t.clientY; t0=Date.now(); ok=true;
+  }, {passive:true});
+  document.addEventListener('touchend',function(e){
+    if(!ok) return; ok=false;
+    var t=e.changedTouches[0];
+    var dx=t.clientX-x0, dy=t.clientY-y0, dt=Date.now()-t0;
+    if(dt>800) return;
+    if(Math.abs(dx)<70 || Math.abs(dy)>60) return;
+    if(dx<0) goBack(); else goForward();
+  }, {passive:true});
+})();
 
 /* ========================= เริ่มทำงาน ========================= */
 (function init(){
@@ -961,19 +1046,8 @@ $('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
   try{ t=localStorage.getItem('ol_token')||''; }catch(e){}
   if(!t){ show('scLogin'); return; }
   S.token=t;
-  /* ค้างล็อกอินไว้เสมอ — ออกจากระบบเมื่อกดปุ่มออก หรือเซสชันหมดอายุจริงเท่านั้น */
-  (function tryHome(n){
-    loadHome().catch(function(e){
-      if(isAuthErr(e)){
-        S.token=''; try{ localStorage.removeItem('ol_token'); }catch(_){}
-        show('scLogin'); $('loginMsg').textContent='เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่';
-        return;
-      }
-      if(n<3){ setTimeout(function(){ tryHome(n+1); }, 1500*n); return; }
-      show('scLogin');
-      $('loginMsg').textContent='เชื่อมต่อไม่ได้ — กดเข้าสู่ระบบเพื่อลองใหม่';
-    });
-  })(1);
+  show('scSplash');
+  resume(1);
 })();
 </script>
 </body>
