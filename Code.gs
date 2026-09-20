@@ -501,6 +501,7 @@ function tickRounds() {
     var now = new Date();
     var sh  = sheetOf('Rounds');
     var rows = readTable('Rounds');
+    var onDuty = shiftDays();   // วันที่ไม่มีใครเข้าเวร = ไม่ต้องแจ้งเตือน
 
     rows.forEach(function (r) {
       var st = String(r.status);
@@ -509,8 +510,9 @@ function tickRounds() {
       if (close.getTime() < now.getTime()) {
         var next = (num(r.pointsDone) > 0) ? 'PARTIAL' : 'MISSED';
         updateRow('Rounds', r._row, { status: next, finishedAt: nowIso() });
-        notifySupervisor('รอบ ' + r.roundNo + ' วันที่ ' + r.workDate + ' สถานะ ' +
-                         (next === 'MISSED' ? 'ขาด' : 'ไม่ครบจุด'), next === 'MISSED' ? 'HIGH' : 'MED');
+        if (onDuty[dstr(r.workDate)])
+          notifySupervisor('รอบ ' + r.roundNo + ' วันที่ ' + r.workDate + ' สถานะ ' +
+                           (next === 'MISSED' ? 'ขาด' : 'ไม่ครบจุด'), next === 'MISSED' ? 'HIGH' : 'MED');
       }
     });
     SpreadsheetApp.flush();
@@ -522,6 +524,18 @@ function tickRounds() {
  * เตือนก่อนถึงรอบ และเตือนซ้ำเมื่อเลยเวลามาแล้วยังไม่มีใครเริ่ม
  * ตั้งเป็น trigger ทุก 5 นาที — กันส่งซ้ำด้วยประวัติในแท็บ Notifications
  */
+/**
+ * วันปฏิบัติงานที่มี รปภ. กดลงเวลาเข้าเวรแล้ว — ใช้เป็นสวิตช์ของการแจ้งเตือนทั้งระบบ
+ * ไม่มีใครเข้าเวร = ไม่ส่งแจ้งเตือนใด ๆ ของวันนั้น
+ */
+function shiftDays() {
+  var d = {};
+  readTable('Shifts').forEach(function (s) {
+    if (s.checkInAt) d[dstr(s.workDate)] = true;
+  });
+  return d;
+}
+
 function remindRounds() {
   if (String(cfgGet('NOTIFY_CHANNEL', 'WEBEX')).toUpperCase() === 'OFF') return 0;
   var lock = LockService.getScriptLock();
@@ -537,11 +551,8 @@ function remindRounds() {
       if (t === 'ROUND_REMIND' || t === 'ROUND_LATE') already[t + '|' + String(n.refId)] = true;
     });
 
-    // เตือนเฉพาะวันที่มี รปภ. ลงเวลาเข้าเวรและยังไม่ออกเวร
-    var onDuty = {};
-    readTable('Shifts').forEach(function (s) {
-      if (!s.checkOutAt) onDuty[dstr(s.workDate)] = true;
-    });
+    // เตือนเฉพาะวันที่ รปภ. กดลงเวลาเข้าเวรแล้วเท่านั้น
+    var onDuty = shiftDays();
 
     var sent = 0;
     readTable('Rounds').forEach(function (r) {
