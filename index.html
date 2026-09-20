@@ -489,6 +489,11 @@ function paintShift(){
   }
 }
 
+/* เลยเวลาปิดรอบแล้ว — บันทึกไม่ได้ */
+function roundClosed(r){
+  return !!r && new Date(r.closeAt).getTime() < Date.now();
+}
+
 /* ป้ายเวลาของรอบ — รอบยืดหยุ่นแสดงเป็นช่วงเวลาแทนเวลานัด */
 function rlabel(r){
   return r.flex ? ('ช่วง '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น.') : (hhmm(r.schedAt)+' น.');
@@ -624,7 +629,9 @@ function openRound(r){
   $('roundTitle').textContent='รอบ '+r.roundNo+' · '+rlabel(r);
   var st=roundState(r);
   var b=$('roundBanner');
-  if(st.k==='bad')       b.innerHTML='<div class="banner bad">รอบนี้'+st.t+' — บันทึกได้แต่จะถูกทำเครื่องหมายไว้</div>';
+  if(roundClosed(r))     b.innerHTML='<div class="banner bad">🔒 รอบนี้ปิดแล้วเมื่อ '+hhmm(r.closeAt)+
+                           ' น. — บันทึกเช็คอินไม่ได้</div>';
+  else if(st.k==='bad')  b.innerHTML='<div class="banner bad">รอบนี้'+st.t+' — บันทึกได้แต่จะถูกทำเครื่องหมายไว้</div>';
   else if(st.k==='')     b.innerHTML='<div class="banner warn">รอบนี้เริ่มได้ตั้งแต่ '+hhmm(r.openAt)+' น.</div>';
   else if(r.flex)        b.innerHTML='<div class="banner '+(st.k==='warn'?'warn':'ok')+'">รอบยืดหยุ่น — '+
                            'เดินเมื่อไหร่ก็ได้ภายใน '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น. ('+st.t+')</div>';
@@ -637,7 +644,7 @@ function doneIn(roundId){ return (S.boot.done&&S.boot.done[roundId])||[]; }
 
 function paintCps(){
   var box=$('cpList'); box.innerHTML='';
-  var done=doneIn(S.round.roundId);
+  var done=doneIn(S.round.roundId), closed=roundClosed(S.round);
   S.boot.checkpoints.forEach(function(cp){
     var isDone=done.indexOf(cp.cpId)>=0;
     var div=document.createElement('div');
@@ -646,8 +653,9 @@ function paintCps(){
       '<div class="grow"><strong>'+cp.name+'</strong>'+
       (cp.requirePhoto?'<div class="muted" style="font-size:14px">📷 ต้องถ่ายรูป'+
         (cp.photoHeading!=null?' · หันไปทาง'+dirName(cp.photoHeading):'')+'</div>':'')+'</div>'+
-      (isDone?'<span class="pill ok">เสร็จ</span>':'<span class="pill">แตะ</span>');
-    if(!isDone) div.onclick=function(){ openCheck(cp); };
+      (isDone?'<span class="pill ok">เสร็จ</span>'
+             :(closed?'<span class="pill bad">ปิดแล้ว</span>':'<span class="pill">แตะ</span>'));
+    if(!isDone && !closed) div.onclick=function(){ openCheck(cp); };
     box.appendChild(div);
   });
 }
@@ -807,6 +815,11 @@ function headingState(){
 
 function syncSaveBtn(){
   var b=$('btnSaveCheckin'); if(!b) return;
+  if(roundClosed(S.round)){
+    b.disabled=true; b.textContent='🔒 รอบนี้ปิดแล้ว — บันทึกไม่ได้';
+    var sk=$('btnHdgSkip'); if(sk) sk.classList.add('hide');
+    return;
+  }
   var h=headingState(), skip=$('btnHdgSkip');
   if(skip) skip.classList.toggle('hide', !(h.need && h.noRead));
   if(h.need && !h.ok){
