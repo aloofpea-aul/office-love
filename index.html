@@ -73,6 +73,8 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .back{background:none;width:auto;font-size:17px;color:var(--pri2);
   display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;margin:-10px 0 -10px -16px}
 .hide{display:none!important}
+.avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--card2);flex:none}
+.avatar.lg{width:104px;height:104px}
 .round.locked{opacity:.55}
 .round.locked .no{background:var(--card2);color:var(--bad)}
 .banner{padding:12px 14px;border-radius:12px;font-size:16px;margin-bottom:12px}
@@ -137,7 +139,10 @@ a{color:var(--pri2)}
 <!-- ───────────── หน้าหลัก ───────────── -->
 <section id="scHome" class="hide">
   <div class="topbar"><div class="wrap row between">
-    <div><strong id="meName"></strong><div class="muted" id="meRole" style="font-size:14px"></div></div>
+    <div id="btnMe" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+      <img id="meAvatar" class="avatar" alt="">
+      <div><strong id="meName"></strong><div class="muted" id="meRole" style="font-size:14px"></div></div>
+    </div>
     <button class="btn-ghost btn-sm" id="btnLogout">ออก</button>
   </div></div>
   <div class="wrap">
@@ -163,6 +168,47 @@ a{color:var(--pri2)}
       <a class="btn btn-ghost" href="supervisor.html" style="text-decoration:none;margin-bottom:8px">📋 หน้าหัวหน้าเวร</a>
       <a class="btn btn-ghost" id="lnkAdmin" href="admin.html" style="text-decoration:none">⚙️ ตั้งค่าระบบ</a>
     </div>
+  </div>
+</section>
+
+<!-- ───────────── ข้อมูลส่วนตัว ───────────── -->
+<section id="scMe" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackMe">‹ กลับ</button>
+    <strong>ข้อมูลส่วนตัว</strong>
+    <span style="width:40px"></span>
+  </div></div>
+  <div class="wrap">
+    <div class="card" style="text-align:center">
+      <img id="meAvatarBig" class="avatar lg" alt="">
+      <h2 id="meNameBig" style="margin:10px 0 2px"></h2>
+      <div class="muted" id="meRoleBig"></div>
+      <div style="height:14px"></div>
+      <input type="file" id="fileAvatar" accept="image/*" class="hide">
+      <button class="btn-ghost" id="btnPickAvatar">📷 เปลี่ยนรูปประจำตัว</button>
+    </div>
+
+    <div class="card">
+      <label>เบอร์โทร</label>
+      <input id="mePhone" type="tel" inputmode="tel" autocomplete="tel">
+      <div style="height:12px"></div>
+      <button id="btnSavePhone">บันทึกเบอร์โทร</button>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">เปลี่ยนรหัสผ่าน</h3>
+      <label>รหัสผ่านเดิม</label>
+      <input id="pwOld" type="password" autocomplete="current-password">
+      <label>รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)</label>
+      <input id="pwNew" type="password" autocomplete="new-password">
+      <label>ยืนยันรหัสผ่านใหม่</label>
+      <input id="pwNew2" type="password" autocomplete="new-password">
+      <div style="height:12px"></div>
+      <button id="btnSavePw">เปลี่ยนรหัสผ่าน</button>
+    </div>
+
+    <p class="muted" style="text-align:center;font-size:14px">
+      ชื่อ-สกุลและสิทธิ์การใช้งาน แก้ไขได้โดยผู้ดูแลระบบเท่านั้น</p>
   </div>
 </section>
 
@@ -256,7 +302,7 @@ var $ = function(id){ return document.getElementById(id); };
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
 function show(id){
-  ['scSplash','scLogin','scHome','scRound','scCheck','scInc'].forEach(function(s){
+  ['scSplash','scLogin','scHome','scMe','scRound','scCheck','scInc'].forEach(function(s){
     $(s).classList.toggle('hide', s!==id);
   });
   window.scrollTo(0,0);
@@ -445,7 +491,7 @@ function loadHome(){
     var p=$('dayTypePill');
     p.textContent=j.dayType==='HOLIDAY'?'วันหยุด · 10 รอบ':'วันทำการ · 6 รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
-    paintShift(); paintRounds(); startReminder();
+    paintMe(); paintShift(); paintRounds(); startReminder();
     var staff = j.user.role==='SUPERVISOR' || j.user.role==='ADMIN';
     $('staffLinks').classList.toggle('hide', !staff);
     $('lnkAdmin').classList.toggle('hide', j.user.role!=='ADMIN');
@@ -850,11 +896,11 @@ function syncSaveBtn(){
   }
 }
 
-function shrink(file){
+function shrink(file,maxW){
   return new Promise(function(res){
     var img=new Image(), url=URL.createObjectURL(file);
     img.onload=function(){
-      var w=Math.min(1280,img.width), h=Math.round(img.height*(w/img.width));
+      var w=Math.min(maxW||1280,img.width), h=Math.round(img.height*(w/img.width));
       var c=document.createElement('canvas'); c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
       URL.revokeObjectURL(url);
@@ -967,6 +1013,62 @@ $('btnSendInc').onclick=function(){
   });
 };
 
+/* ========================= ข้อมูลส่วนตัว ========================= */
+var DEF_AV='data:image/svg+xml;utf8,'+encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'+
+  '<rect width="64" height="64" rx="32" fill="#2a2440"/>'+
+  '<circle cx="32" cy="25" r="11" fill="#7c6cf0"/>'+
+  '<path d="M8 62c0-13 11-21 24-21s24 8 24 21z" fill="#7c6cf0"/></svg>');
+
+function paintMe(){
+  var p=(S.boot&&S.boot.profile)||{phone:'',avatar:''};
+  $('meAvatar').src    = p.avatar || DEF_AV;
+  $('meAvatarBig').src = p.avatar || DEF_AV;
+  $('meNameBig').textContent = S.me ? S.me.name : '';
+  $('meRoleBig').textContent = $('meRole').textContent;
+  $('mePhone').value = p.phone || '';
+}
+$('btnMe').onclick      = function(){ paintMe(); show('scMe'); };
+$('btnBackMe').onclick  = function(){ show('scHome'); };
+$('btnPickAvatar').onclick = function(){ $('fileAvatar').click(); };
+
+$('fileAvatar').onchange=function(){
+  var f=this.files && this.files[0]; if(!f) return;
+  var self=this;
+  toast('กำลังอัปโหลดรูป…', 6000);
+  shrink(f,320).then(function(d){
+    $('meAvatarBig').src=d;
+    return api('saveProfile',{avatar:d});
+  }).then(function(j){
+    if(S.boot) S.boot.profile={phone:j.phone,avatar:j.avatar};
+    $('meAvatar').src=j.avatar; $('meAvatarBig').src=j.avatar;
+    toast('เปลี่ยนรูปประจำตัวแล้ว');
+  }).catch(function(e){
+    toast(e.message); paintMe();
+  }).then(function(){ self.value=''; });
+};
+
+$('btnSavePhone').onclick=function(){
+  var b=this; b.disabled=true;
+  api('saveProfile',{phone:$('mePhone').value}).then(function(j){
+    if(S.boot) S.boot.profile.phone=j.phone;
+    $('mePhone').value=j.phone;
+    toast('บันทึกเบอร์โทรแล้ว');
+  }).catch(function(e){ toast(e.message); }).then(function(){ b.disabled=false; });
+};
+
+$('btnSavePw').onclick=function(){
+  var o=$('pwOld').value, n=$('pwNew').value, n2=$('pwNew2').value;
+  if(!o||!n){ toast('กรอกรหัสผ่านเดิมและรหัสผ่านใหม่'); return; }
+  if(n.length<6){ toast('รหัสผ่านใหม่ต้องยาวอย่างน้อย 6 ตัว'); return; }
+  if(n!==n2){ toast('ยืนยันรหัสผ่านใหม่ไม่ตรงกัน'); return; }
+  var b=this; b.disabled=true;
+  api('saveProfile',{oldPassword:o,newPassword:n}).then(function(){
+    $('pwOld').value=''; $('pwNew').value=''; $('pwNew2').value='';
+    toast('เปลี่ยนรหัสผ่านเรียบร้อย ครั้งหน้าใช้รหัสใหม่เข้าระบบ', 4000);
+  }).catch(function(e){ toast(e.message); }).then(function(){ b.disabled=false; });
+};
+
 /* ========================= ค้างล็อกอิน =========================
    เข้าระบบค้างไว้ตลอด — หลุดได้กรณีเดียวคือกดออกจากระบบ
    เน็ตไม่ดี/เซิร์ฟเวอร์ยังไม่ตื่น จะวนลองใหม่เองเรื่อย ๆ ไม่เด้งไปหน้าล็อกอิน */
@@ -999,13 +1101,14 @@ $('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
 
 /* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
 function curScreen(){
-  var ids=['scHome','scRound','scCheck','scInc'];
+  var ids=['scHome','scMe','scRound','scCheck','scInc'];
   for(var i=0;i<ids.length;i++) if(!$(ids[i]).classList.contains('hide')) return ids[i];
   return '';
 }
 function goBack(){
   var c=curScreen();
   if(c==='scCheck'){ stopCam(); show('scRound'); toast('ย้อนกลับ'); }
+  else if(c==='scMe'){ show('scHome'); }
   else if(c==='scRound'||c==='scInc'){ loadHome(); toast('กลับหน้าหลัก'); }
 }
 function goForward(){
