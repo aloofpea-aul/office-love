@@ -42,6 +42,8 @@ var SCHEMA = {
   ChecklistItems : ['itemId','cpId','label','type','required','orderNo','active'],
   RoundPlan      : ['planId','dayType','roundNo','schedTime','flexEndTime','graceEarlyMin','graceLateMin','active'],
   Holidays       : ['date','name','kind'],
+  Inspections    : ['inspId','ts','workDate','userId','userName','role','cpId','cpCode','cpName',
+                    'lat','lng','distanceM','accuracyM','note','photoUrl'],
   PushSubs       : ['userId','endpoint','p256dh','auth','device','createdAt','active'],
   Shifts         : ['shiftId','workDate','guardUserId','guardName','checkInAt','checkInLat','checkInLng',
                     'checkOutAt','checkOutLat','checkOutLng','status','note'],
@@ -93,6 +95,7 @@ function _route(req) {
       // --- หัวหน้า / ผู้ดูแล ---
       case 'supervisorBoard' : return apiSupervisorBoard(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'incidentUpdate'  : return apiIncidentUpdate(auth(req, ['SUPERVISOR','ADMIN']), req);
+      case 'inspect'         : return apiInspect(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'checkinDetail'   : return apiCheckinDetail(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'trend'           : return apiTrend(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'incidentDetail'  : return apiIncidentDetail(auth(req, ['SUPERVISOR','ADMIN']), req);
@@ -993,8 +996,47 @@ function apiSupervisorBoard(me, req) {
                headingBad: !!headingBad[String(c.checkinId)],
                overrideReason: String(c.overrideReason || '') };
     }),
-    incidents: incidents
+    incidents: incidents,
+    inspections: readTable('Inspections')
+      .filter(function (i) { return dstr(i.workDate) === workDate; })
+      .map(function (i) {
+        return { inspId: String(i.inspId), ts: String(i.ts), userName: String(i.userName),
+                 role: String(i.role), cpCode: String(i.cpCode), cpName: String(i.cpName),
+                 lat: num(i.lat), lng: num(i.lng), distanceM: num(i.distanceM),
+                 note: String(i.note || ''), photoUrl: String(i.photoUrl || '') };
+      }).sort(function (a, b) { return a.ts < b.ts ? 1 : -1; })
   });
+}
+
+/**
+ * สุ่มตรวจโดยหัวหน้าเวร/ผู้ดูแลระบบ — ไม่ผูกกับรอบและไม่ผูกกับเวลา
+ * บันทึกแยกจากการเดินตรวจของ รปภ. เพื่อไม่ให้ไปนับรวมเป็นผลงานของเขา
+ */
+function apiInspect(me, req) {
+  var cpId = String(req.cpId || '');
+  var cp = null;
+  readTable('Checkpoints').forEach(function (c) { if (String(c.cpId) === cpId) cp = c; });
+  if (!cp) return err('ไม่พบจุดตรวจนี้');
+
+  var lat = num(req.lat), lng = num(req.lng);
+  var dist = (lat && lng) ? haversine(lat, lng, num(cp.lat), num(cp.lng)) : -1;
+
+  var id = uid();
+  var url = '';
+  if (req.photo) {
+    var saved = savePhoto(req.photo, 'INSPECT', id, { lat: lat, lng: lng, phase: 'สุ่มตรวจ' });
+    if (saved) url = saved.url;
+  }
+
+  appendRow('Inspections', {
+    inspId: id, ts: nowIso(), workDate: workDateOf(new Date()),
+    userId: me.userId, userName: me.name, role: me.role,
+    cpId: cpId, cpCode: String(cp.code), cpName: String(cp.name),
+    lat: lat, lng: lng, distanceM: dist, accuracyM: num(req.accuracyM, 999),
+    note: String(req.note || ''), photoUrl: url
+  });
+  audit(me.userId, 'INSPECT', 'CHECKPOINT', cpId, null, { distanceM: dist });
+  return ok({ inspId: id, distanceM: dist, photoUrl: url });
 }
 
 function apiCheckinDetail(me, req) {
@@ -1196,7 +1238,9 @@ function apiMonthlyReport(me, req) {
       incidents: incidents.length,
       incidentsOpen: incidents.filter(function (i) { return i.status !== 'CLOSED'; }).length,
       photos: readTable('Attachments').filter(function (a) {
-        return String(a.takenAt).indexOf(month) === 0; }).length
+        return String(a.takenAt).indexOf(month) === 0; }).length,
+      inspections: readTable('Inspections').filter(function (i) {
+        return monthOf(dstr(i.workDate)) === month; }).length
     },
     byDate:  Object.keys(byDate).sort().map(function (k) { return byDate[k]; }),
     byRound: Object.keys(byRound).sort(function (a, b) { return num(a) - num(b); })
