@@ -2,10 +2,11 @@
    เก็บไฟล์หน้าเว็บไว้ในเครื่อง ให้เปิดแอปได้แม้สัญญาณขาด
    ข้อมูลที่ส่งเข้า API ไม่ผ่าน cache — ตัวแอปมีคิว IndexedDB ของตัวเองอยู่แล้ว
    ** แก้เลข VERSION ทุกครั้งที่อัปโหลดไฟล์ใหม่ ไม่งั้นเครื่อง รปภ. จะยังเห็นของเก่า ** */
-var VERSION = 'officelove-v9';
+var VERSION = 'officelove-v10';
 var SHELL = [
   './',
   './index.html',
+  './config.js',
   './admin.html',
   './supervisor.html',
   './report.html',
