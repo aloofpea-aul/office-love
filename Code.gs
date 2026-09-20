@@ -34,8 +34,8 @@ var CFG = {
 // โครงตาราง — setupAll() ใช้สร้างแท็บและหัวคอลัมน์
 // ---------------------------------------------------------------------------
 var SCHEMA = {
-  Admins         : ['UserId','Name','Password','Role','Status','Apps','Phone','Note'],
-  Members        : ['UserId','Name','Password','Role','Status','Apps','Phone','Position','Note'],
+  Admins         : ['UserId','Name','Password','Role','Status','Apps','Phone','Note','Avatar'],
+  Members        : ['UserId','Name','Password','Role','Status','Apps','Phone','Position','Note','Avatar'],
   Config         : ['key','value','note'],
   Checkpoints    : ['cpId','code','name','lat','lng','radiusM','orderNo','requirePhoto',
                     'photoHeading','headingTol','refPhotoFileId','photoHint','active','note'],
@@ -88,6 +88,7 @@ function _route(req) {
       case 'checkin'         : return apiCheckin(auth(req), req);
       case 'incident'        : return apiIncident(auth(req), req);
       case 'myHistory'       : return apiMyHistory(auth(req), req);
+      case 'saveProfile'     : return apiSaveProfile(auth(req), req);
 
       // --- หัวหน้า / ผู้ดูแล ---
       case 'supervisorBoard' : return apiSupervisorBoard(auth(req, ['SUPERVISOR','ADMIN']), req);
@@ -387,6 +388,94 @@ function passwordMatch(stored, given) {
   return s === g;                                                          // เก็บเป็นข้อความตรง
 }
 
+/** หาแถวผู้ใช้ในชีตแพลตฟอร์ม พร้อมเลขแถวและหัวคอลัมน์ เพื่อแก้ไขข้อมูลส่วนตัว */
+function platformRow(userId) {
+  var ss = platformSS();
+  if (!ss) return null;
+  var tabs = ['Admins', 'Members'];
+  for (var t = 0; t < tabs.length; t++) {
+    var sh = ss.getSheetByName(tabs[t]);
+    if (!sh || sh.getLastRow() < 2) continue;
+    var vals = sh.getRange(1, 1, sh.getLastRow(), Math.max(sh.getLastColumn(), 1)).getValues();
+    var head = vals[0].map(function (h) { return String(h).trim(); });
+    for (var i = 1; i < vals.length; i++) {
+      var o = {};
+      for (var c = 0; c < head.length; c++) if (head[c]) o[head[c]] = vals[i][c];
+      var id = String(pick(o, ['UserId','Username','Phone','เบอร์โทร','Email']) || '').trim();
+      if (id && id === String(userId)) return { sh: sh, head: head, row: i + 1, obj: o };
+    }
+  }
+  return null;
+}
+
+/** เขียนค่าลงแถวผู้ใช้ตามชื่อคอลัมน์ — คอลัมน์ไหนยังไม่มีจะสร้างต่อท้ายให้ */
+function platformSet(rec, patch) {
+  Object.keys(patch).forEach(function (k) {
+    if (rec.head.indexOf(k) < 0) {
+      rec.head.push(k);
+      rec.sh.getRange(1, rec.head.length).setValue(k);
+    }
+  });
+  var w = rec.head.length;
+  var vals = rec.sh.getRange(rec.row, 1, 1, w).getValues()[0];
+  Object.keys(patch).forEach(function (k) { vals[rec.head.indexOf(k)] = patch[k]; });
+  rec.sh.getRange(rec.row, 1, 1, w).setValues([vals]);
+  SpreadsheetApp.flush();
+}
+
+/** ข้อมูลส่วนตัวที่ผู้ใช้แก้ไขเองได้ */
+function myProfile(userId) {
+  var r = platformRow(userId);
+  if (!r) return { phone: '', avatar: '' };
+  return { phone: String(pick(r.obj, ['Phone','เบอร์โทร']) || ''),
+           avatar: String(r.obj.Avatar || '') };
+}
+
+/**
+ * ผู้ใช้แก้ข้อมูลส่วนตัวของตัวเอง — เบอร์โทร / รหัสผ่าน / รูปประจำตัว
+ * ชื่อ-สกุลและสิทธิ์ ยังต้องให้ผู้ดูแลระบบแก้ในชีตเท่านั้น
+ */
+function apiSaveProfile(me, req) {
+  var rec = platformRow(me.userId);
+  if (!rec) return err('ไม่พบบัญชีผู้ใช้นี้ในระบบ');
+
+  var patch = {}, changed = [];
+
+  if (req.phone !== undefined) {
+    if (!String(rec.obj.UserId || '').trim())
+      return err('บัญชีนี้ใช้เบอร์โทรเป็นชื่อผู้ใช้ จึงเปลี่ยนเองไม่ได้ กรุณาแจ้งผู้ดูแลระบบ');
+    var ph = String(req.phone || '').replace(/[^0-9+\-]/g, '').trim();
+    if (ph && !/^[0-9+\-]{9,15}$/.test(ph)) return err('รูปแบบเบอร์โทรไม่ถูกต้อง');
+    patch.Phone = ph;
+    changed.push('เบอร์โทร');
+  }
+
+  if (req.newPassword) {
+    if (!passwordMatch(pick(rec.obj, ['Password','Pass','รหัสผ่าน']), String(req.oldPassword || '')))
+      return err('รหัสผ่านเดิมไม่ถูกต้อง');
+    var np = String(req.newPassword);
+    if (np.length < 6) return err('รหัสผ่านใหม่ต้องยาวอย่างน้อย 6 ตัวอักษร');
+    patch.Password = sha256Hex(np);          // เก็บเป็นค่าเข้ารหัส ไม่เก็บรหัสผ่านตรง ๆ
+    changed.push('รหัสผ่าน');
+  }
+
+  var avatar = '';
+  if (req.avatar) {
+    var saved = savePhoto(req.avatar, 'AVATAR', me.userId, { phase: 'รูปประจำตัว' });
+    if (!saved) return err('บันทึกรูปไม่สำเร็จ');
+    avatar = saved.url;
+    patch.Avatar = avatar;
+    changed.push('รูปประจำตัว');
+  }
+
+  if (!changed.length) return err('ไม่มีข้อมูลที่ต้องแก้ไข');
+  platformSet(rec, patch);
+  audit(me.userId, 'PROFILE_UPDATE', 'USER', me.userId, null, { changed: changed });
+
+  var now = myProfile(me.userId);
+  return ok({ changed: changed, phone: now.phone, avatar: now.avatar });
+}
+
 function apiLogin(req) {
   var user = String(req.username || '').trim();
   var pass = String(req.password || '');
@@ -646,6 +735,7 @@ function apiBootstrap(me) {
     user: { userId: me.userId, name: me.name, role: me.role },
     workDate: workDate, dayType: isHoliday(workDate) ? 'HOLIDAY' : 'WORKDAY',
     serverTime: nowIso(), checkpoints: cps, checklist: items,
+    profile: myProfile(me.userId),
     // ต่ออายุโทเคนทุกครั้งที่เปิดแอป — เซสชันจะไม่หมดอายุเองตราบใดที่ยังใช้งานอยู่
     token: signToken({ userId: me.userId, name: me.name, role: me.role,
                        exp: toIso(new Date(Date.now() + CFG.TOKEN_TTL_DAYS * 86400000)) }),
