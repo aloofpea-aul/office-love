@@ -342,6 +342,23 @@ function auth(req, roles) {
   return u;
 }
 
+/** คืนค่าทุกคอลัมน์ที่ชื่อตรงกับรายการ — ใช้ตอนล็อกอินเพื่อให้ใช้ได้ทั้ง UserId และเบอร์โทร */
+function pickAll(row, names) {
+  var out = [];
+  for (var i = 0; i < names.length; i++) {
+    for (var k in row) {
+      if (String(k).trim().toLowerCase() === names[i].toLowerCase() &&
+          row[k] !== '' && row[k] !== null) out.push(String(row[k]).trim());
+    }
+  }
+  return out;
+}
+
+/** ตัดช่องว่าง ขีด วงเล็บ ออกก่อนเทียบ — เบอร์โทรพิมพ์แบบไหนก็เข้าได้ */
+function normId(v) {
+  return String(v == null ? '' : v).replace(/[\s\-().]/g, '').toLowerCase();
+}
+
 /** หาค่าในแถวจากชื่อคอลัมน์ที่เป็นไปได้หลายแบบ */
 function pick(row, names) {
   for (var i = 0; i < names.length; i++) {
@@ -488,8 +505,12 @@ function apiLogin(req) {
     var rows = readPlatform(sets[s].tab);
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      var uname = String(pick(r, ['Username','User','UserId','Phone','เบอร์โทร','รหัสผู้ใช้','Email','อีเมล'])).trim();
-      if (!uname || uname !== user) continue;
+      // เทียบกับ "ทุก" ชื่อผู้ใช้ที่แถวนี้มี — เข้าได้ทั้งรหัสผู้ใช้และเบอร์โทร
+      var ids = pickAll(r, ['Username','User','UserId','Phone','เบอร์โทร','รหัสผู้ใช้','Email','อีเมล']);
+      var want = normId(user);
+      var hit = false;
+      for (var q = 0; q < ids.length; q++) if (normId(ids[q]) === want) { hit = true; break; }
+      if (!hit) continue;
       if (!passwordMatch(pick(r, ['Password','Pass','รหัสผ่าน']), pass)) continue;
 
       var status = String(pick(r, ['Status','สถานะ','Active'])).trim().toUpperCase();
