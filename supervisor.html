@@ -150,6 +150,12 @@ svg.chart{width:100%;height:150px;display:block}
   </div>
 
   <div class="card">
+    <div class="row between"><h2 style="margin:0">การสุ่มตรวจ</h2><span class="pill" id="inspCount"></span></div>
+    <p class="muted" style="margin:6px 0 10px">หัวหน้าเวรหรือผู้ดูแลระบบลงตรวจเอง — ไม่นับเป็นรอบของ รปภ.</p>
+    <div id="inspList"></div>
+  </div>
+
+  <div class="card">
     <div class="row between"><h2 style="margin:0">เหตุการณ์</h2><span class="pill" id="incCount"></span></div>
     <div style="height:12px"></div>
     <div id="incList"></div>
@@ -260,7 +266,7 @@ function load(quiet){
     p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด · ':'วันทำการ · ')+j.rounds.length+' รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
     $('lastSync').textContent=thaiDate(j.workDate)+' · อัปเดตล่าสุด '+hhmm(j.serverTime)+' น.';
-    drawKpis(); drawBoard(); drawMap(); drawShifts(); drawIncidents();
+    drawKpis(); drawBoard(); drawMap(); drawShifts(); drawInspections(); drawIncidents();
   }).catch(function(e){ $('lastSync').textContent='โหลดไม่สำเร็จ: '+e.message; });
 }
 
@@ -379,6 +385,23 @@ function drawShifts(){
 }
 
 /* ===================== เหตุการณ์ ===================== */
+function drawInspections(){
+  var list=S.data.inspections||[];
+  $('inspCount').textContent=list.length+' ครั้ง';
+  if(!list.length){ $('inspList').innerHTML='<p class="muted">วันนี้ยังไม่มีการสุ่มตรวจ</p>'; return; }
+  $('inspList').innerHTML=list.map(function(x){
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
+      '<div class="row between"><strong>'+hhmm(x.ts)+' น. · จุด '+esc(x.cpCode)+' '+esc(x.cpName)+'</strong>'+
+      '<span class="pill '+(x.distanceM>=0&&x.distanceM<=50?'ok':'warn')+'">'+
+        (x.distanceM<0?'ไม่มีพิกัด':'ห่าง '+x.distanceM+' ม.')+'</span></div>'+
+      '<div class="muted">โดย '+esc(x.userName)+
+        (x.role==='ADMIN'?' (ผู้ดูแลระบบ)':' (หัวหน้าเวร)')+'</div>'+
+      (x.note?'<div style="margin-top:4px">📝 '+esc(x.note)+'</div>':'')+
+      (x.photoUrl?'<div style="margin-top:6px"><a href="'+esc(x.photoUrl)+'" target="_blank">ดูรูปที่แนบ</a></div>':'')+
+      '</div>';
+  }).join('');
+}
+
 function drawIncidents(){
   var list=S.data.incidents;
   var open=list.filter(function(i){return ['NEW','ACK','IN_PROGRESS'].indexOf(i.status)>=0;});
