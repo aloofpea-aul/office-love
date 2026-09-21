@@ -150,6 +150,18 @@ svg.chart{width:100%;height:150px;display:block}
   </div>
 
   <div class="card">
+    <div class="row between"><h2 style="margin:0">การต่อเวร</h2><span class="pill" id="hoCount"></span></div>
+    <p class="muted" style="margin:6px 0 10px">บันทึกตอนคนกะก่อนกดออกเวร — "รับทราบ" คือคนกะถัดไปเปิดอ่านแล้ว</p>
+    <div id="hoList"></div>
+  </div>
+
+  <div class="card">
+    <div class="row between"><h2 style="margin:0">ตรวจเพิ่มนอกรอบ</h2><span class="pill" id="frCount"></span></div>
+    <p class="muted" style="margin:6px 0 10px">รปภ. กดตรวจเองนอกตารางเวลา — ไม่นับเป็นรอบ และไม่กระทบสถิติรอบปกติ</p>
+    <div id="frList"></div>
+  </div>
+
+  <div class="card">
     <div class="row between"><h2 style="margin:0">การสุ่มตรวจ</h2><span class="pill" id="inspCount"></span></div>
     <p class="muted" style="margin:6px 0 10px">หัวหน้าเวรหรือผู้ดูแลระบบลงตรวจเอง — ไม่นับเป็นรอบของ รปภ.</p>
     <div id="inspList"></div>
@@ -259,6 +271,9 @@ $('dPick').onchange=function(){ S.date=this.value; load(); };
 function load(quiet){
   if(!quiet) $('lastSync').textContent='กำลังโหลด…';
   return api('supervisorBoard',{workDate:S.date}).then(function(j){
+    /* รอบตรวจอิสระแยกออกมา ไม่ให้ปนกับสถิติรอบตามตาราง */
+    j.freeRounds=(j.rounds||[]).filter(function(r){ return String(r.mode||'')==='FREE'; });
+    j.rounds=(j.rounds||[]).filter(function(r){ return String(r.mode||'')!=='FREE'; });
     S.data=j;
     S.me=j.user||S.me;
     if(S.me) $('whoami').textContent=S.me.name+' · '+(S.me.role==='ADMIN'?'ผู้ดูแลระบบ':'หัวหน้าเวร');
@@ -266,7 +281,7 @@ function load(quiet){
     p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด · ':'วันทำการ · ')+j.rounds.length+' รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
     $('lastSync').textContent=thaiDate(j.workDate)+' · อัปเดตล่าสุด '+hhmm(j.serverTime)+' น.';
-    drawKpis(); drawBoard(); drawMap(); drawShifts(); drawInspections(); drawIncidents();
+    drawKpis(); drawBoard(); drawMap(); drawShifts(); drawHandovers(); drawFreeChecks(); drawInspections(); drawIncidents();
   }).catch(function(e){ $('lastSync').textContent='โหลดไม่สำเร็จ: '+e.message; });
 }
 
@@ -319,8 +334,11 @@ function drawBoard(){
            : roundPassed(r)        ? '<span class="pill bad">เลยเวลา</span>'
            : (new Date(r.openAt).getTime()<=Date.now() ? '<span class="pill live">กำลังเดิน</span>'
                                                        : '<span class="pill">รอเวลา</span>');
-    h+='<tr><td class="rowlab"><b>รอบ '+r.roundNo+'</b><br><span class="muted">'+
-       (r.flex ? ('ยืดหยุ่น '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)) : (hhmm(r.schedAt)+' น.'))+'</span></td>';
+    var isStation=String(r.mode||'')==='STATION';
+    h+='<tr><td class="rowlab"><b>รอบ '+r.roundNo+'</b>'+
+       (isStation?' <span class="pill warn">ประจำจุด</span>':'')+'<br><span class="muted">'+
+       (r.flex ? ('ยืดหยุ่น '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)) : (hhmm(r.schedAt)+' น.'))+
+       (isStation?'<br>อยู่ '+(r.minStayMin||0)+' นาที':'')+'</span></td>';
     d.checkpoints.forEach(function(cp){
       var c=map[r.roundId+'|'+cp.cpId];
       if(c){
@@ -377,10 +395,51 @@ function drawShifts(){
   var s=S.data.shifts;
   if(!s.length){ $('shiftList').innerHTML='<p class="muted">ยังไม่มีใครลงเวลาเข้าเวรของวันนี้</p>'; return; }
   $('shiftList').innerHTML=s.map(function(x){
-    return '<div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)">'+
-      '<div><strong>'+esc(x.guardName)+'</strong><div class="muted">เข้า '+hhmm(x.checkInAt)+
-      ' น. · ออก '+(x.checkOutAt?hhmm(x.checkOutAt)+' น.':'ยังไม่ออก')+'</div></div>'+
-      '<span class="pill '+(x.status==='OPEN'?'live':'ok')+'">'+(x.status==='OPEN'?'อยู่เวร':'จบเวร')+'</span></div>';
+    var late=(+x.lateMin||0), onTime=String(x.onTime||'').toUpperCase()==='TRUE';
+    var tag='';
+    if(x.plannedStart) tag = onTime ? '<span class="pill ok">ตรงเวลา</span>'
+                                    : '<span class="pill warn">สาย '+late+' น.</span>';
+    var em = x.emergency ? '<div class="muted" style="color:var(--bad)">⚠️ ออกเวรฉุกเฉิน: '+
+                           esc(x.emergencyReason||'ไม่ระบุเหตุผล')+'</div>' : '';
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
+      '<div class="row between"><div><strong>'+esc(x.guardName)+'</strong>'+
+      (x.shiftName?' <span class="muted">· '+esc(x.shiftName)+'</span>':'')+
+      '<div class="muted">เข้า '+hhmm(x.checkInAt)+' น. · ออก '+
+      (x.checkOutAt?hhmm(x.checkOutAt)+' น.':'ยังไม่ออก')+
+      (x.plannedStart?' · ตามแผน '+hhmm(x.plannedStart)+'–'+hhmm(x.plannedEnd):'')+'</div></div>'+
+      '<div style="text-align:right">'+tag+' <span class="pill '+(x.status==='OPEN'?'live':'ok')+'">'+
+      (x.status==='OPEN'?'อยู่เวร':'จบเวร')+'</span></div></div>'+em+'</div>';
+  }).join('');
+}
+
+function drawHandovers(){
+  var list=S.data.handovers||[];
+  $('hoCount').textContent=list.length+' ครั้ง';
+  if(!list.length){ $('hoList').innerHTML='<p class="muted">วันนี้ยังไม่มีการต่อเวร</p>'; return; }
+  $('hoList').innerHTML=list.map(function(h){
+    var acked=!!h.ackAt;
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
+      '<div class="row between"><strong>'+hhmm(h.ts)+' น. · '+esc(h.outName)+' → '+esc(h.inName)+'</strong>'+
+      '<span class="pill '+(acked?'ok':'warn')+'">'+(acked?'รับทราบ '+hhmm(h.ackAt)+' น.':'รอรับทราบ')+'</span></div>'+
+      (h.note?'<div class="muted" style="margin-top:4px">📝 '+esc(h.note)+'</div>'
+             :'<div class="muted" style="margin-top:4px">— ไม่มีข้อความส่งต่อ —</div>')+'</div>';
+  }).join('');
+}
+
+function drawFreeChecks(){
+  var fr=S.data.freeRounds||[];
+  var ids={}; fr.forEach(function(r){ ids[r.roundId]=true; });
+  var cs=(S.data.checkins||[]).filter(function(c){ return ids[c.roundId]; })
+          .sort(function(a,b){ return a.ts<b.ts?1:-1; });
+  $('frCount').textContent=cs.length+' ครั้ง';
+  if(!cs.length){ $('frList').innerHTML='<p class="muted">วันนี้ยังไม่มีการตรวจเพิ่มนอกรอบ</p>'; return; }
+  $('frList').innerHTML=cs.map(function(c){
+    var cp=(S.data.checkpoints||[]).filter(function(x){return x.cpId===c.cpId;})[0];
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
+      '<div class="row between"><strong>'+hhmm(c.ts)+' น. · '+
+      esc(cp?(cp.code+' '+cp.name):c.cpId)+'</strong>'+
+      '<span class="pill '+(c.verify==='OK'?'ok':'warn')+'">'+esc(c.userName)+'</span></div>'+
+      (c.note?'<div class="muted" style="margin-top:4px">📝 '+esc(c.note)+'</div>':'')+'</div>';
   }).join('');
 }
 

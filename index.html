@@ -1199,7 +1199,9 @@ function paintShift(){
     var leftMin=endMs?Math.round((endMs-Date.now())/60000):0;
     var hoMin=plan?plan.handoverMin:15;
     var inHo = endMs && Math.abs(leftMin)<=hoMin;
-    var needTaker = !plan || plan.requireHandover;
+    /* ถ้าเซิร์ฟเวอร์ยังเป็นรุ่นเก่า (ไม่ส่งตารางกะมา) ให้ทำงานแบบเดิม ไม่บังคับผู้รับเวร */
+    var hasShiftPlans = !!(S.boot.shiftPlans && S.boot.shiftPlans.length);
+    var needTaker = hasShiftPlans ? (!plan || plan.requireHandover) : false;
     var taker = others.length ? others[0] : null;
 
     var head='<div class="row between"><div>'+
