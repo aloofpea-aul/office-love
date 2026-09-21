@@ -1340,6 +1340,13 @@ function roundClosed(r){
   return !!r && new Date(r.closeAt).getTime() < Date.now();
 }
 
+/* ยังไม่ถึงเวลาเปิดรอบ — เช็คอินไม่ได้ (รอบตรวจอิสระกดได้ตลอด) */
+function roundNotOpen(r){
+  if(!r || isFreeRound(r)) return false;
+  var o=new Date(r.openAt).getTime();
+  return !isNaN(o) && Date.now() < o;
+}
+
 /* ป้ายเวลาของรอบ — รอบยืดหยุ่นแสดงเป็นช่วงเวลาแทนเวลานัด */
 function isStation(r){ return !!r && String(r.mode||'')==='STATION'; }
 function stayMin(r){ return (r && r.minStayMin) || 60; }
@@ -1520,7 +1527,8 @@ function openRound(r){
   if(roundClosed(r))     b.innerHTML='<div class="banner bad">🔒 รอบนี้ปิดแล้วเมื่อ '+hhmm(r.closeAt)+
                            ' น. — บันทึกเช็คอินไม่ได้</div>';
   else if(st.k==='bad')  b.innerHTML='<div class="banner bad">รอบนี้'+st.t+' — บันทึกได้แต่จะถูกทำเครื่องหมายไว้</div>';
-  else if(st.k==='')     b.innerHTML='<div class="banner warn">รอบนี้เริ่มได้ตั้งแต่ '+hhmm(r.openAt)+' น.</div>';
+  else if(st.k==='')     b.innerHTML='<div class="banner bad">⏳ รอบนี้ยังไม่ถึงเวลา — เริ่มเช็คอินได้ตั้งแต่ '+
+                           hhmm(r.openAt)+' น.</div>';
   else if(r.flex)        b.innerHTML='<div class="banner '+(st.k==='warn'?'warn':'ok')+'">รอบยืดหยุ่น — '+
                            'เดินเมื่อไหร่ก็ได้ภายใน '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' น. ('+st.t+')</div>';
   else if(isStation(r)) b.innerHTML='<div class="banner ok">รอบประจำจุด — กด “เริ่มประจำจุด” เมื่อถึงจุด '+
@@ -1589,7 +1597,9 @@ function paintStation(box, r, closed){
     $('btnStOut').onclick=function(){ S.stationOut=true; openCheck(cp); };
     return;
   }
-  html+= closed ? '<div class="banner bad">🔒 รอบนี้ปิดแล้ว — บันทึกไม่ได้</div>'
+  html+= closed ? '<div class="banner bad">'+(roundNotOpen(r)
+                    ? '⏳ รอบนี้ยังไม่ถึงเวลา — เริ่มได้ตั้งแต่ '+hhmm(r.openAt)+' น.'
+                    : '🔒 รอบนี้ปิดแล้ว — บันทึกไม่ได้')+'</div>'
                 : '<button id="btnStIn">เริ่มประจำจุด</button>';
   box.innerHTML=html;
   if(!closed) $('btnStIn').onclick=function(){ S.stationOut=false; openCheck(cp); };
@@ -1597,7 +1607,8 @@ function paintStation(box, r, closed){
 
 function paintCps(){
   var box=$('cpList'); box.innerHTML='';
-  var done=doneIn(S.round.roundId), closed=roundClosed(S.round);
+  var early=roundNotOpen(S.round);
+  var done=doneIn(S.round.roundId), closed=roundClosed(S.round) || early;
   if(isStation(S.round)){ paintStation(box, S.round, closed); return; }
   clearInterval(ST_TIMER);
   var free=isFreeRound(S.round);
@@ -1612,7 +1623,7 @@ function paintCps(){
       (cp.requirePhoto?'<div class="muted" style="font-size:14px">📷 ต้องถ่ายรูป'+
         (cp.photoHeading!=null?' · หันไปทาง'+dirName(cp.photoHeading):'')+'</div>':'')+'</div>'+
       (isDone?'<span class="pill ok">เสร็จ</span>'
-             :(closed?'<span class="pill bad">ปิดแล้ว</span>'
+             :(closed?'<span class="pill bad">'+(early?'ยังไม่ถึงเวลา':'ปิดแล้ว')+'</span>'
                      :'<span class="pill'+(free&&nDone?' ok':'')+'">'+(free&&nDone?nDone+' ครั้ง':'แตะ')+'</span>'));
     if(!isDone && !closed) div.onclick=function(){ openCheck(cp); };
     box.appendChild(div);
@@ -1621,6 +1632,10 @@ function paintCps(){
 
 /* ========================= เช็คอิน ========================= */
 function openCheck(cp){
+  if(roundNotOpen(S.round)){
+    toast('รอบนี้ยังไม่ถึงเวลา — เริ่มได้ตั้งแต่ '+hhmm(S.round.openAt)+' น.');
+    return;
+  }
   if(isFreeRound(S.round)){
     var why=prompt('ตรวจเพิ่มจุด '+cp.code+' — เหตุผลสั้น ๆ (เว้นว่างได้)','');
     if(why===null) return;
