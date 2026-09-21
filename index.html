@@ -116,6 +116,8 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .hp .bd{padding:0 16px 16px;font-size:16px;line-height:1.65}
 .hp .bd ol,.hp .bd ul{padding-left:20px;margin:8px 0}
 .hp .bd li{margin:6px 0}
+.hp .bd h4{margin:16px 0 6px;font-size:16px;color:var(--pri-l,#c4b5fd)}
+.hp .bd table td{padding:4px 0;border-bottom:1px solid var(--line)}
 .hp .warn{background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);
   border-radius:10px;padding:10px 12px;margin:10px 0}
 .hp .bad{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);
@@ -283,11 +285,15 @@ a{color:var(--pri2)}
       <div id="shiftBox"></div>
     </div>
 
+    <div id="hoBox" class="hide"></div>
+
     <div id="nextRound"></div>
 
     <h3>รอบเดินตรวจ</h3>
     <div id="roundList"></div>
 
+    <div id="freeRow"></div>
+    <button class="btn-ghost" id="btnFreeHome" style="margin-top:8px">🔦 ตรวจเพิ่มนอกรอบ</button>
     <button class="btn-ghost" id="btnIncidentHome" style="margin-top:8px">⚠️ แจ้งเหตุผิดปกติ</button>
     <button class="btn-ghost" id="btnHelpHome" style="margin-top:8px">📖 คู่มือการใช้งาน</button>
     <div id="staffLinks" class="hide" style="margin-top:10px">
@@ -408,10 +414,17 @@ a{color:var(--pri2)}
       <div class="bd">
         <ol>
           <li>เปิดแอป หน้าหลักจะมีปุ่ม <b>🕕 ลงเวลาเข้าเวร</b></li>
+          <li>ถ้ามีหลายกะให้ <b>เลือกกะ</b> ในช่องด้านบนปุ่มก่อน (ปกติระบบเลือกกะที่ใกล้เวลาที่สุดให้แล้ว)</li>
           <li>ยืนที่จุดลงเวลาที่กำหนด แล้วกดปุ่ม</li>
-          <li>รอสักครู่ให้อ่านพิกัด เสร็จแล้วจะขึ้น "อยู่ระหว่างเวร"</li>
+          <li>รอสักครู่ให้อ่านพิกัด เสร็จแล้วจะขึ้น "อยู่ระหว่างเวร" พร้อมชื่อกะและเวลาตามแผน</li>
         </ol>
+        <p><b>เข้าเวรก่อนเวลาได้</b> ระบบเปิดให้กดล่วงหน้าตามที่ผู้ดูแลตั้งไว้ (ปกติ 15 นาที)</p>
+        <p><b>ตรงเวลา / สาย</b> — ถ้ากดภายในเวลาที่กำหนดจะขึ้นป้าย
+           <span class="pill ok">ตรงเวลา</span> และได้แต้มเต็ม ถ้าเกินกว่านั้นขึ้น
+           <span class="pill warn">สาย</span> ได้แต้มลดลง และระบบจะแจ้งหัวหน้าเวรอัตโนมัติ</p>
         <div class="warn"><b>ต้องกดเข้าเวรก่อนเสมอ</b> ถ้าไม่กด ระบบจะไม่เตือนรอบเดินตรวจให้เลยทั้งวัน</div>
+        <div class="ok">เวลาเข้า-ออกของแต่ละกะ และเกณฑ์ว่าเกินกี่นาทีถึงเรียกว่าสาย
+          <b>ผู้ดูแลระบบตั้งค่าได้เอง</b> จะมีกี่กะต่อวันก็ได้ — ตกลงกันให้ชัดแล้วแจ้งผู้ดูแลตั้งให้</div>
       </div>
     </details>
 
@@ -492,14 +505,59 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>9. จบกะ — ลงเวลาออกเวร</summary>
+    <details><summary>9. จบกะ — ออกเวร และการต่อเวร</summary>
       <div class="bd">
         <p>กลับมาที่จุดลงเวลา กดปุ่ม <b>ออกเวร</b> ที่หน้าหลัก แล้วยืนยัน</p>
+
+        <h4 style="margin:14px 0 6px">ต้องมีคนรับเวรก่อน</h4>
+        <p>ระบบ<b>บังคับให้มีผู้รับเวร</b> — จะกดออกเวรได้ก็ต่อเมื่อ
+           <b>คนกะถัดไปกดเข้าเวรแล้ว</b> ถ้ายังไม่มีใครรับ ปุ่มออกเวรจะกดไม่ได้
+           และขึ้นข้อความว่า "ยังไม่มีผู้รับเวร"</p>
+        <ul>
+          <li>กดปุ่ม <b>🔔 เตือนคนกะถัดไป</b> เพื่อส่งข้อความแจ้งเข้าห้องแชท</li>
+          <li>พอเขากดเข้าเวร ปุ่มออกเวรจะเปิดให้กดเองอัตโนมัติ ไม่ต้องปิดแอปเปิดใหม่</li>
+        </ul>
+        <p>ตอนกดออกเวร ระบบจะถาม <b>ข้อความส่งต่อ</b> — พิมพ์สิ่งที่คนกะถัดไปต้องรู้
+           เช่น "ไฟหน้าอาคารเสีย" หรือ "มีรถจอดค้างหลังอาคาร" เว้นว่างได้ถ้าไม่มีอะไร</p>
+        <p>คนที่<b>รับเวร</b>จะเห็นแถบข้อความส่งต่อบนหน้าหลัก ให้กด
+           <b>รับทราบ</b> หลังอ่านแล้ว หัวหน้าเวรดูได้ว่าใครส่งต่ออะไรและรับทราบหรือยัง</p>
+
+        <h4 style="margin:14px 0 6px">ออกเวรฉุกเฉิน</h4>
+        <p>ถ้าจำเป็นต้องออกจริง ๆ ทั้งที่ยังไม่มีคนรับ ให้กดลิงก์
+           <b>ออกเวรฉุกเฉิน</b> ใต้ปุ่ม แล้วเลือกเหตุผล เช่น ป่วยกะทันหัน /
+           เหตุฉุกเฉินที่บ้าน / คนกะถัดไปไม่มา</p>
+        <div class="warn">การออกเวรฉุกเฉินจะ<b>แจ้งหัวหน้าเวรและผู้ดูแลทันที</b>
+          และ<b>ไม่ได้แต้มออกเวร</b>ของวันนั้น ใช้เฉพาะเมื่อจำเป็นจริง ๆ
+          ถ้าใช้บ่อยโดยไม่มีเหตุอันควรถือเป็นข้อบกพร่องตามข้อตกลงปฏิบัติงาน</div>
         <div class="warn">อย่าลืมกดออกเวรทุกครั้ง ไม่งั้นระบบจะคิดว่ายังอยู่ในเวรอยู่</div>
       </div>
     </details>
 
-    <details><summary>10. ไม่มีสัญญาณอินเทอร์เน็ต ทำยังไง</summary>
+    <details><summary>10. ตรวจเพิ่มนอกรอบ (ตรวจอิสระ)</summary>
+      <div class="bd">
+        <p>ถ้าอยากเดินตรวจเพิ่มนอกตารางเวลา — ได้ยินเสียงผิดปกติ ฝนตกหนัก
+           มีคนแปลกหน้า หรือแค่อยากเดินดูอีกรอบ — ใช้ปุ่มนี้ได้เลย</p>
+        <ol>
+          <li>หน้าหลัก กดปุ่ม <b>🔦 ตรวจเพิ่มนอกรอบ</b></li>
+          <li>ระบบจะถามสั้น ๆ ว่า <b>ตรวจเพิ่มเพราะอะไร</b> (พิมพ์สั้น ๆ หรือเว้นว่างก็ได้)</li>
+          <li>เลือกจุดไหนก็ได้ เช็คอินได้ตามปกติ ถ่ายรูปได้เหมือนรอบจริง</li>
+        </ol>
+        <ul>
+          <li><b>กดได้ไม่จำกัด ตอนไหนก็ได้</b> ทั้งวันทั้งคืน ไม่มีเวลาเปิด-ปิด</li>
+          <li>จุดเดิมกดซ้ำได้ ไม่ล็อค</li>
+          <li><b>ไม่นับเป็นรอบ</b> และ<b>ไม่กระทบสถิติรอบตามตาราง</b> —
+              ตรวจเพิ่มแล้วไม่ทำให้รอบปกติเสียหาย และไม่ทำให้รอบที่ขาดกลายเป็นครบ</li>
+          <li>ได้แต้มจุดละ 1 แต้ม <b>สูงสุด 10 แต้มต่อวัน</b>
+              และจุดเดิมต้องเว้นอย่างน้อย 10 นาทีถึงจะนับแต้มใหม่</li>
+        </ul>
+        <div class="ok">หัวหน้าเวรเห็นรายการตรวจเพิ่มทั้งหมดพร้อมเหตุผล —
+          เป็นหลักฐานที่ดีว่าเราใส่ใจดูแลพื้นที่เกินหน้าที่ที่กำหนด</div>
+        <div class="warn">ตรวจเพิ่มนอกรอบ<b>ไม่ใช่การเดินแทนรอบจริง</b>
+          รอบตามตารางยังต้องเดินให้ครบเหมือนเดิม</div>
+      </div>
+    </details>
+
+    <details><summary>11. ไม่มีสัญญาณอินเทอร์เน็ต ทำยังไง</summary>
       <div class="bd">
         <p><b>เดินตรวจต่อได้ตามปกติ</b> ระบบเก็บรายการไว้ในเครื่องก่อน</p>
         <ul>
@@ -511,7 +569,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>11. ปัญหาที่พบบ่อย</summary>
+    <details><summary>12. ปัญหาที่พบบ่อย</summary>
       <div class="bd">
         <p><b>ขึ้นแถบแดงว่าเปิดจาก LINE</b><br>
            ทำตามหัวข้อที่ 1 — ต้องย้ายไปเปิดใน Chrome ไม่งั้นกล้องกับเข็มทิศใช้ไม่ได้</p>
@@ -529,7 +587,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>12. มือถือที่ใช้งานได้ดี</summary>
+    <details><summary>13. มือถือที่ใช้งานได้ดี</summary>
       <div class="bd">
         <p>แอปนี้ใช้ <b>เซ็นเซอร์เข็มทิศ</b> ในการตรวจว่าหันกล้องถูกทิศหรือไม่
            มือถือราคาประหยัดหลายรุ่น <b>ตัดเซ็นเซอร์ตัวนี้ออก</b> เพื่อลดต้นทุน</p>
@@ -565,7 +623,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>13. แก้ข้อมูลส่วนตัวและรหัสผ่าน</summary>
+    <details><summary>14. แก้ข้อมูลส่วนตัวและรหัสผ่าน</summary>
       <div class="bd">
         <p>แตะ <b>ชื่อตัวเองมุมซ้ายบน</b>ของหน้าหลัก จะเข้าหน้าข้อมูลส่วนตัว แก้ได้ 3 อย่าง</p>
         <ul>
@@ -579,7 +637,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>14. แต้มสะสม — ได้แต้มจากอะไรบ้าง</summary>
+    <details><summary>15. แต้มสะสม — ได้แต้มจากอะไรบ้าง</summary>
       <div class="bd">
         <p>ทุกอย่างที่ทำในแอปจะกลายเป็นแต้ม การ์ดสีม่วงบนสุดของหน้าหลักคือแต้มของวันนี้</p>
         <table style="width:100%;border-collapse:collapse;font-size:15px">
@@ -591,6 +649,7 @@ a{color:var(--pri2)}
           <tr><td>รอบประจำจุดที่อยู่ครบเวลา</td><td style="text-align:right"><b>+3</b> (รวมเป็น 10)</td></tr>
           <tr><td>รายงานเหตุผิดปกติพร้อมภาพ</td><td style="text-align:right"><b>+15</b></td></tr>
           <tr><td>รอบกลางคืนก่อน 06:00</td><td style="text-align:right"><b>คูณ 1.5</b></td></tr>
+          <tr><td>ตรวจเพิ่มนอกรอบ (จุดละ)</td><td style="text-align:right">+1 <span class="muted">สูงสุด 10/วัน</span></td></tr>
           <tr><td>ทำครบทุกรอบทั้งผลัด</td><td style="text-align:right"><b>+20</b></td></tr>
         </table>
         <p style="margin-top:10px"><b>โบนัสต่อเนื่อง</b> ทำครบทั้งผลัดติดกัน
@@ -600,12 +659,13 @@ a{color:var(--pri2)}
         <div class="warn"><b>การยืนยันด้วยตนเอง</b> ถ้ามีเหตุจริงตามที่เลือกไว้ ได้แต้มเต็มเหมือนเดิม
           แต่รอบเดินตรวจจำกัดไว้ 3 ครั้งต่อเดือน เกินจากนั้นรอบนั้นจะไม่ได้แต้ม
           (รอบประจำจุด C ไม่นับรวม)</div>
+        <div class="warn"><b>ออกเวรฉุกเฉิน</b> (ออกทั้งที่ยังไม่มีคนรับเวร) จะไม่ได้แต้มออกเวร +5 ของวันนั้น</div>
         <div class="bad">แต้มจะถูกหักหรือยกเลิกเฉพาะกรณีความบกพร่องร้ายแรงตามข้อตกลงการปฏิบัติงาน
           และทุกครั้งจะมีเหตุผลกำกับให้ดูย้อนหลังได้ ไม่มีการหักเงียบ ๆ</div>
       </div>
     </details>
 
-    <details><summary>15. ระดับและเหรียญตรา</summary>
+    <details><summary>16. ระดับและเหรียญตรา</summary>
       <div class="bd">
         <p>แตะปุ่ม <b>🏅 เหรียญตราและร้านแลกแต้ม</b> บนการ์ดแต้ม เพื่อดูหน้ารางวัลของตัวเอง</p>
         <p><b>ระดับ</b> — ไต่ขึ้นอย่างเดียว ไม่มีวันลด แม้จะเอาแต้มไปแลกของแล้วก็ตาม</p>
@@ -630,7 +690,7 @@ a{color:var(--pri2)}
       </div>
     </details>
 
-    <details><summary>16. ร้านแลกแต้ม</summary>
+    <details><summary>17. ร้านแลกแต้ม</summary>
       <div class="bd">
         <p>อยู่ในหน้า <b>รางวัลของฉัน</b> เลื่อนลงมาจะเห็นรายการของรางวัล</p>
         <ol>
@@ -970,9 +1030,10 @@ function loadHome(){
     $('meRole').textContent=({GUARD:'พนักงานรักษาความปลอดภัย',SUPERVISOR:'หัวหน้าเวร',ADMIN:'ผู้ดูแลระบบ'})[j.user.role]||j.user.role;
     $('wdText').textContent=thaiDate(j.workDate);
     var p=$('dayTypePill');
-    p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+' · '+((j.rounds&&j.rounds.length)||0)+' รอบ';
+    var nSched=((j.rounds||[]).filter(function(r){ return String(r.mode||'')!=='FREE'; })).length;
+  p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+' · '+nSched+' รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
-    paintMe(); paintShift(); paintRounds(); startReminder();
+    paintMe(); paintShift(); paintHandover(); paintRounds(); startReminder();
     var staff = j.user.role==='SUPERVISOR' || j.user.role==='ADMIN';
     $('staffLinks').classList.toggle('hide', !staff);
     $('lnkAdmin').classList.toggle('hide', j.user.role!=='ADMIN');
@@ -1120,38 +1181,156 @@ function shiftBody(p, phase){
     });
 }
 
+function isFreeRound(r){ return !!r && String(r.mode||'')==='FREE'; }
+
+/* ========================= กะและการต่อเวร ========================= */
+function myPlan(){
+  var sh=S.boot.shift; if(!sh) return null;
+  var out=null;
+  (S.boot.shiftPlans||[]).forEach(function(p){ if(p.planId===sh.planId) out=p; });
+  return out;
+}
+
 function paintShift(){
-  var b=$('shiftBox');
-  if(S.boot.shift){
-    b.innerHTML='<div class="row between"><div><div class="muted">เข้าเวรเมื่อ</div>'+
-      '<h3 style="margin:2px 0 0">'+hhmm(S.boot.shift.checkInAt)+' น.</h3></div>'+
-      '<span class="pill ok">อยู่ระหว่างเวร</span></div>'+
-      '<div style="height:12px"></div><button class="btn-ghost" id="btnOut">ออกเวร</button>';
-    $('btnOut').onclick=function(){
-      if(!confirm('ยืนยันออกเวร?')) return;
-      var btn=this; btn.disabled=true;
-      getPos().catch(function(){ return null; }).then(function(p){
-        return shiftBody(p,'ออกเวร').then(function(b){
-          if(!b){ btn.disabled=false; return null; }
-          return api('shiftOut', b);
-        });
-      }).then(function(r){ if(!r) return; toast('ออกเวรเรียบร้อย'); return loadHome(); })
-        .catch(function(e){ toast(e.message,4000); btn.disabled=false; });
-    };
-  }else{
-    b.innerHTML='<p class="muted" style="margin:0 0 12px">ยังไม่ได้ลงเวลาเข้าเวร — กดปุ่มด้านล่างก่อนเริ่มเดินตรวจ</p>'+
-      '<button id="btnIn">🕕 ลงเวลาเข้าเวร</button>';
-    $('btnIn').onclick=function(){
-      var btn=this; btn.disabled=true; toast('กำลังอ่านพิกัด…');
-      getPos().catch(function(){ return null; }).then(function(p){
-        return shiftBody(p,'เข้าเวร').then(function(b){
-          if(!b){ btn.disabled=false; return null; }
-          return api('shiftIn', b);
-        });
-      }).then(function(r){ if(!r) return; toast('เข้าเวรเรียบร้อย'); return loadHome(); })
-        .catch(function(e){ toast(e.message,4000); btn.disabled=false; });
-    };
+  var b=$('shiftBox'), sh=S.boot.shift, others=S.boot.othersOnDuty||[];
+
+  if(sh){
+    var plan=myPlan(), endMs=sh.plannedEnd?new Date(sh.plannedEnd).getTime():0;
+    var leftMin=endMs?Math.round((endMs-Date.now())/60000):0;
+    var hoMin=plan?plan.handoverMin:15;
+    var inHo = endMs && Math.abs(leftMin)<=hoMin;
+    var needTaker = !plan || plan.requireHandover;
+    var taker = others.length ? others[0] : null;
+
+    var head='<div class="row between"><div>'+
+      '<div class="muted">'+(sh.shiftName||'อยู่ระหว่างเวร')+
+        (sh.plannedStart?' · '+hhmm(sh.plannedStart)+'–'+hhmm(sh.plannedEnd)+' น.':'')+'</div>'+
+      '<h3 style="margin:2px 0 0">เข้าเวร '+hhmm(sh.checkInAt)+' น.</h3></div>'+
+      '<span class="pill '+(sh.onTime?'ok':'warn')+'">'+
+        (sh.onTime?'ตรงเวลา':'สาย '+sh.lateMin+' นาที')+'</span></div>';
+
+    var info='';
+    if(endMs && leftMin>hoMin)
+      info='<div class="muted" style="margin-top:8px;font-size:14px">จบกะ '+hhmm(sh.plannedEnd)+
+           ' น. · เหลืออีก '+(leftMin>=60?Math.floor(leftMin/60)+' ชม. '+(leftMin%60)+' นาที':leftMin+' นาที')+'</div>';
+    else if(inHo)
+      info='<div class="banner warn" style="margin-top:10px">ช่วงต่อเวรแล้ว — '+
+           (taker?('✅ '+taker.name+' เข้าเวรแล้ว ส่งเวรได้เลย'):'⏳ ยังไม่มีผู้รับเวร')+'</div>';
+    else if(endMs && leftMin<-hoMin)
+      info='<div class="banner bad" style="margin-top:10px">เลยเวลาจบกะมาแล้ว '+Math.abs(leftMin)+' นาที'+
+           (taker?' · '+taker.name+' เข้าเวรแล้ว':' · ยังไม่มีผู้รับเวร')+'</div>';
+
+    var canOut = !needTaker || !!taker;
+    var btn = canOut
+      ? '<button class="btn-ghost" id="btnOut">ออกเวร'+(taker?' · ส่งเวรให้ '+taker.name:'')+'</button>'
+      : '<button class="btn-ghost" id="btnOut" disabled>🔒 ยังไม่มีผู้รับเวร</button>'+
+        '<button class="btn-ghost" id="btnPing" style="margin-top:8px">🔔 เตือนคนกะถัดไป</button>'+
+        '<p class="muted" style="font-size:13px;margin:10px 0 0;text-align:center">'+
+        '<a href="#" id="lnkEmg" style="color:#fca5a5">ออกเวรฉุกเฉิน</a></p>';
+
+    b.innerHTML=head+info+'<div style="height:12px"></div>'+btn;
+
+    if(canOut) $('btnOut').onclick=function(){ doShiftOut(this, taker, false); };
+    else{
+      $('btnPing').onclick=function(){
+        var x=this; x.disabled=true;
+        api('pingNextShift').then(function(){ toast('ส่งข้อความเตือนแล้ว',3000); })
+          .catch(function(e){ toast(e.message); }).then(function(){ x.disabled=false; });
+      };
+      $('lnkEmg').onclick=function(e){ e.preventDefault(); askEmergency(); };
+    }
+    return;
   }
+
+  // ยังไม่ได้เข้าเวร
+  var plans=S.boot.shiftPlans||[], now=Date.now(), best=null, bestGap=0;
+  plans.forEach(function(p){
+    var g=Math.abs(new Date(p.startAt).getTime()-now);
+    if(!best||g<bestGap){ best=p; bestGap=g; }
+  });
+  var sel='';
+  if(plans.length>1){
+    sel='<select id="selShift" style="margin:0 0 10px">'+plans.map(function(p){
+      return '<option value="'+p.planId+'"'+(best&&p.planId===best.planId?' selected':'')+'>'+
+        p.name+' · '+p.startTime+'–'+p.endTime+' น.</option>';
+    }).join('')+'</select>';
+  }
+  var hint='ยังไม่ได้ลงเวลาเข้าเวร — กดปุ่มด้านล่างก่อนเริ่มเดินตรวจ';
+  if(best){
+    var d=Math.round((now-new Date(best.startAt).getTime())/60000);
+    hint = d < -best.graceEarlyMin ? ('กะถัดไป '+best.name+' เริ่ม '+best.startTime+' น. · เข้าเวรได้ตั้งแต่ '+
+             hhmmMs(new Date(best.startAt).getTime()-best.graceEarlyMin*60000)+' น.')
+         : d > best.lateAfterMin ? ('เลยเวลาเริ่ม '+best.name+' มาแล้ว '+d+' นาที — กดเข้าเวรจะถูกบันทึกว่าสาย')
+         : ('ถึงเวลา '+best.name+' แล้ว กดเข้าเวรได้เลย');
+  }
+  b.innerHTML='<p class="muted" style="margin:0 0 12px">'+hint+'</p>'+sel+
+    '<button id="btnIn">🕕 ลงเวลาเข้าเวร</button>';
+  $('btnIn').onclick=function(){
+    var btn=this; btn.disabled=true; toast('กำลังอ่านพิกัด…');
+    var pid=$('selShift')?$('selShift').value:(best?best.planId:'');
+    getPos().catch(function(){ return null; }).then(function(p){
+      return shiftBody(p,'เข้าเวร').then(function(bd){
+        if(!bd){ btn.disabled=false; return null; }
+        bd.planId=pid;
+        return api('shiftIn', bd);
+      });
+    }).then(function(r){
+      if(!r) return;
+      toast(r.onTime?('เข้าเวรเรียบร้อย · '+(r.planName||'')):('เข้าเวรแล้ว · สาย '+r.lateMin+' นาที'), 3500);
+      return loadHome();
+    }).catch(function(e){ toast(e.message,4000); btn.disabled=false; });
+  };
+}
+
+function doShiftOut(btn, taker, emergency, reason){
+  var note='';
+  if(taker && !emergency){
+    note=prompt('เรื่องคงค้างที่ต้องส่งต่อให้ '+taker.name+' (ไม่มีก็เว้นว่างได้)','')||'';
+    if(!confirm('ยืนยันส่งเวรให้ '+taker.name+' และออกเวร?')) return;
+  }
+  btn.disabled=true;
+  getPos().catch(function(){ return null; }).then(function(p){
+    return shiftBody(p,'ออกเวร').then(function(bd){
+      if(!bd){ btn.disabled=false; return null; }
+      bd.handoverNote=note;
+      if(emergency){ bd.emergency=true; bd.emergencyReason=reason||''; }
+      return api('shiftOut', bd);
+    });
+  }).then(function(r){
+    if(!r) return;
+    toast(r.emergency?'บันทึกออกเวรฉุกเฉินแล้ว — แจ้งผู้จัดการเรียบร้อย'
+                     :('ออกเวรเรียบร้อย'+(r.handoverTo?' · ส่งเวรให้ '+r.handoverTo:'')), 4000);
+    return loadHome();
+  }).catch(function(e){
+    var m=String(e.message||'');
+    if(m.indexOf('NO_TAKER|')===0){ toast(m.split('|')[1],4000); loadHome(); return; }
+    toast(m,4000); btn.disabled=false;
+  });
+}
+
+function askEmergency(){
+  var list=S.boot.emergencyReasons||['ป่วยกะทันหัน','เหตุฉุกเฉินที่บ้าน','คนกะถัดไปไม่มา','อื่น ๆ'];
+  askReason('ออกเวรฉุกเฉิน — เลือกเหตุผล', list).then(function(why){
+    if(!why) return;
+    if(!confirm('ออกเวรฉุกเฉินโดยไม่มีผู้รับเวร\n\nเหตุผล: '+why+
+                '\n\nระบบจะแจ้งหัวหน้าเวรและผู้จัดการทันที และบันทึกไว้ในรายงาน ยืนยันหรือไม่')) return;
+    doShiftOut($('btnOut'), null, true, why);
+  });
+}
+
+function paintHandover(){
+  var box=$('hoBox'); if(!box) return;
+  var h=S.boot.pendingHandover;
+  if(!h){ box.classList.add('hide'); return; }
+  box.classList.remove('hide');
+  box.innerHTML='<div class="banner ok" style="margin:0"><b>รับเวรจาก '+h.from+'</b> เวลา '+hhmm(h.ts)+' น.'+
+    (h.note?'<div style="margin-top:6px">เรื่องคงค้าง: '+h.note+'</div>':'<div style="margin-top:6px">ไม่มีเรื่องคงค้าง</div>')+
+    '</div><button class="btn-ghost" id="btnHoAck" style="margin-top:8px">รับทราบ</button>';
+  $('btnHoAck').onclick=function(){
+    var x=this; x.disabled=true;
+    api('handoverAck',{hoId:h.hoId}).then(function(){ toast('รับทราบแล้ว'); return loadHome(); })
+      .catch(function(e){ toast(e.message); x.disabled=false; });
+  };
 }
 
 /* เลยเวลาปิดรอบแล้ว — บันทึกไม่ได้ */
@@ -1201,9 +1380,27 @@ function roundState(r){
   return {k:'live', t:'ถึงเวลาแล้ว'};
 }
 
+function freeRound(){
+  var out=null;
+  (S.boot.rounds||[]).forEach(function(r){ if(isFreeRound(r)) out=r; });
+  return out;
+}
+
+function paintFreeRow(){
+  var box=$('freeRow'); if(!box) return;
+  var r=freeRound(), n=r?(S.boot.done&&S.boot.done[r.roundId]||[]).length:0;
+  if(!n){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="round" id="freeCard"><div class="no">🔦</div>'+
+    '<div class="grow"><strong>ตรวจเพิ่มนอกรอบ</strong>'+
+    '<div class="muted" style="font-size:14px">วันนี้ '+n+' จุด · ไม่นับรวมรอบประจำ</div></div>'+
+    '<span class="pill ok">'+n+'</span></div>';
+  $('freeCard').onclick=function(){ openFree(); };
+}
+
 function paintRounds(){
   var box=$('roundList'); box.innerHTML='';
   S.boot.rounds.forEach(function(r){
+    if(isFreeRound(r)) return;
     var st=roundState(r);
     var lock=roundClosed(r) && r.status!=='COMPLETE';
     var div=document.createElement('div');
@@ -1218,6 +1415,7 @@ function paintRounds(){
     div.onclick=function(){ openRound(r); };
     box.appendChild(div);
   });
+  paintFreeRow();
 }
 
 /* ================== เตือนก่อนถึงรอบ (ในแอป) ================== */
@@ -1251,6 +1449,7 @@ function fireNotif(title, body, tag){
 function nextRound(){
   var now=Date.now(), best=null;
   ((S.boot&&S.boot.rounds)||[]).forEach(function(r){
+    if(isFreeRound(r)) return;
     if(['COMPLETE','MISSED','PARTIAL'].indexOf(r.status)>=0) return;
     if(new Date(r.closeAt).getTime() < now) return;
     if(!best || new Date(r.schedAt).getTime() < new Date(best.schedAt).getTime()) best=r;
@@ -1331,6 +1530,20 @@ function openRound(r){
 
 function doneIn(roundId){ return (S.boot.done&&S.boot.done[roundId])||[]; }
 
+/* เปิดรอบตรวจเพิ่มนอกรอบ — เลือกจุดไหนก็ได้ ซ้ำได้ ไม่จำกัด */
+function openFree(){
+  if(!S.boot.shift) return toast('ต้องลงเวลาเข้าเวรก่อนถึงจะตรวจเพิ่มได้', 3500);
+  var r=freeRound() || { roundId:'FREE', mode:'FREE', cpCodes:'', minStayMin:0,
+                         openAt:new Date(Date.now()-3600000).toISOString(),
+                         closeAt:new Date(Date.now()+86400000).toISOString(),
+                         status:'OPEN', roundNo:0, pointsDone:0, pointsTotal:0 };
+  S.round=r; S.stationOut=false; S.noPhoto=false;
+  $('roundTitle').textContent='🔦 ตรวจเพิ่มนอกรอบ';
+  $('roundBanner').innerHTML='<div class="banner ok">เลือกจุดไหนก็ได้ กี่ครั้งก็ได้ ไม่จำกัด · '+
+    'ไม่นับรวมรอบประจำและไม่มีทางถูกนับว่าขาด</div>';
+  paintCps(); show('scRound');
+}
+
 var ST_TIMER=null;
 
 function paintStation(box, r, closed){
@@ -1385,8 +1598,11 @@ function paintCps(){
   var done=doneIn(S.round.roundId), closed=roundClosed(S.round);
   if(isStation(S.round)){ paintStation(box, S.round, closed); return; }
   clearInterval(ST_TIMER);
+  var free=isFreeRound(S.round);
+  if(free) closed=false;
   allowedCps(S.round).forEach(function(cp){
-    var isDone=done.indexOf(cp.cpId)>=0;
+    var nDone=0; done.forEach(function(x){ if(x===cp.cpId) nDone++; });
+    var isDone=free ? false : nDone>0;
     var div=document.createElement('div');
     div.className='cp'+(isDone?' done':'');
     div.innerHTML='<div class="code">'+(isDone?'✓':cp.code)+'</div>'+
@@ -1394,7 +1610,8 @@ function paintCps(){
       (cp.requirePhoto?'<div class="muted" style="font-size:14px">📷 ต้องถ่ายรูป'+
         (cp.photoHeading!=null?' · หันไปทาง'+dirName(cp.photoHeading):'')+'</div>':'')+'</div>'+
       (isDone?'<span class="pill ok">เสร็จ</span>'
-             :(closed?'<span class="pill bad">ปิดแล้ว</span>':'<span class="pill">แตะ</span>'));
+             :(closed?'<span class="pill bad">ปิดแล้ว</span>'
+                     :'<span class="pill'+(free&&nDone?' ok':'')+'">'+(free&&nDone?nDone+' ครั้ง':'แตะ')+'</span>'));
     if(!isDone && !closed) div.onclick=function(){ openCheck(cp); };
     box.appendChild(div);
   });
@@ -1402,6 +1619,13 @@ function paintCps(){
 
 /* ========================= เช็คอิน ========================= */
 function openCheck(cp){
+  if(isFreeRound(S.round)){
+    var why=prompt('ตรวจเพิ่มจุด '+cp.code+' — เหตุผลสั้น ๆ (เว้นว่างได้)','');
+    if(why===null) return;
+    S.freeNote=why||'';
+  }else{
+    S.freeNote='';
+  }
   S.cp=cp; S.photos=[];
   S.noPhoto = !!S.stationOut;                                // ขากลับของรอบประจำจุด ไม่ต้องถ่ายซ้ำ
   $('cpTitle').textContent=(S.stationOut?'จบการประจำจุด · ':'')+cp.code+' · '+cp.name;
@@ -1610,7 +1834,7 @@ $('btnSaveCheckin').onclick=function(){
     lat:p?p.coords.latitude:0, lng:p?p.coords.longitude:0,
     accuracyM:p?Math.round(p.coords.accuracy):999,
     clientTs:new Date().toISOString(), ua:navigator.userAgent,
-    answers:answers, photos:[],
+    answers:answers, photos:[], note: S.freeNote||'',
     overrideReason: S.headingOverride ? ('เข็มทิศใช้ไม่ได้: '+S.headingOverride) : ''
   };
 
@@ -1648,6 +1872,18 @@ $('btnSaveCheckin').onclick=function(){
   }
 
   api('checkin', body).then(function(j){
+    if(j.mode==='FREE'){
+      stopCam();
+      toast('บันทึกการตรวจเพิ่มแล้ว', 3000);
+      S.freeNote='';
+      var b1=(S.pt&&S.pt.today)||0;
+      loadHome().then(function(){ openFree(); });
+      loadPoints().then(function(){
+        var d1=((S.pt&&S.pt.today)||0)-b1;
+        if(d1>0) ptFloat('+'+d1+' ✨');
+      });
+      return;
+    }
     if(j.mode==='STATION'){
       stopCam();
       var msg = j.phase==='IN' ? 'เริ่มประจำจุดแล้ว — ระบบกำลังจับเวลา'
@@ -1815,6 +2051,7 @@ function paintMe(){
 }
 $('btnMe').onclick      = function(){ paintMe(); show('scMe'); };
 $('btnHelpHome').onclick= function(){ show('scHelp'); };
+$('btnFreeHome').onclick= function(){ openFree(); };
 $('btnPtOpen').onclick  = function(){ openPts(); };
 $('btnBackPts').onclick = function(){ show('scHome'); };
 
