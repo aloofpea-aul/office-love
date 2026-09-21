@@ -79,6 +79,7 @@ th{color:var(--dim);font-weight:600;font-size:14px}
     <button data-t="cp"  class="on">จุดตรวจ</button>
     <button data-t="cl">เช็คลิสต์</button>
     <button data-t="rp">ตารางรอบ</button>
+    <button data-t="sp">ตารางกะ</button>
     <button data-t="hd">วันหยุด</button>
     <button data-t="cf">ค่าระบบ</button>
   </div>
@@ -194,6 +195,13 @@ th{color:var(--dim);font-weight:600;font-size:14px}
           <span class="muted">เว้นว่าง = เวลาตายตัว</span></div>
         <div><label>เปิดก่อน (นาที)</label><input id="rp_early" type="number" value="15"></div>
         <div><label>ปิดหลัง (นาที)</label><input id="rp_late" type="number" value="60"></div>
+        <div><label>ชนิดรอบ</label><select id="rp_mode">
+          <option value="PATROL">เดินตรวจทุกจุด</option>
+          <option value="STATION">ประจำจุด (อยู่กับที่)</option></select></div>
+        <div><label>จุดที่ให้เช็คอิน</label><input id="rp_cps" placeholder="C หรือ A,C">
+          <span class="muted">ใส่รหัสจุด คั่นด้วยจุลภาค — ใช้เฉพาะรอบประจำจุด</span></div>
+        <div><label>อยู่ประจำอย่างน้อย (นาที)</label><input id="rp_stay" type="number" placeholder="60">
+          <span class="muted">ใช้เฉพาะรอบประจำจุด</span></div>
       </div>
       <p class="muted" style="margin:6px 0 0">ใส่ "สิ้นสุดช่วงยืดหยุ่น" เมื่อไม่อยากกำหนดเวลาตายตัว —
         รอบนั้นจะเดินเมื่อไหร่ก็ได้ตั้งแต่ช่องเวลาจนถึงเวลาสิ้นสุด และ "เปิดก่อน/ปิดหลัง" จะไม่ถูกใช้</p>
@@ -202,6 +210,36 @@ th{color:var(--dim);font-weight:600;font-size:14px}
       <button id="btnSaveRp">บันทึกรอบ</button>
     </div>
     <div class="card"><div style="overflow-x:auto"><table id="rpTable"></table></div></div>
+  </div>
+
+  <!-- ── ตารางกะ ── -->
+  <div id="tab-sp" class="hide">
+    <div class="card">
+      <h2>ตารางกะ (เข้าเวร / ออกเวร)</h2>
+      <div class="banner warn">ตั้งได้ไม่จำกัดจำนวนกะต่อวัน · แก้แล้วมีผลกับการกดเข้าเวรครั้งถัดไปทันที
+        · กะที่กำลังเปิดอยู่ไม่ถูกแก้ย้อนหลัง</div>
+      <div class="grid">
+        <div><label>ชื่อกะ</label><input id="sp_name" placeholder="กะกลางคืน"></div>
+        <div><label>เข้าเวรเวลา</label><input id="sp_start" type="time" value="18:00"></div>
+        <div><label>ออกเวรเวลา</label><input id="sp_end" type="time" value="08:00">
+          <span class="muted">ข้ามเที่ยงคืนได้</span></div>
+        <div><label>กดเข้าเวรได้ก่อน (นาที)</label><input id="sp_early" type="number" value="15"></div>
+        <div><label>เกินกี่นาทีถือว่าสาย</label><input id="sp_late" type="number" value="15"></div>
+        <div><label>ช่วงต่อเวร (นาที)</label><input id="sp_ho" type="number" value="15">
+          <span class="muted">เตือนก่อนหมดกะกี่นาที</span></div>
+      </div>
+      <label class="row" style="gap:8px;margin:12px 0">
+        <input type="checkbox" id="sp_req" style="width:20px;height:20px" checked>
+        <span>ต้องมีผู้รับเวรก่อนถึงกดออกเวรได้</span>
+      </label>
+      <label>หมายเหตุ</label><input id="sp_note" placeholder="เว้นว่างได้">
+      <input type="hidden" id="sp_id">
+      <div style="height:14px"></div>
+      <button id="btnSaveSp">บันทึกกะ</button>
+      <button class="ghost" id="btnNewSp">เพิ่มกะใหม่</button>
+      <p class="muted" style="margin:10px 0 0">ลบกะไม่ได้ — ถ้าเลิกใช้ให้กด "ปิด" เพื่อให้ประวัติเวรเก่ายังอ้างอิงได้</p>
+    </div>
+    <div class="card"><div style="overflow-x:auto"><table id="spTable"></table></div></div>
   </div>
 
   <!-- ── วันหยุด ── -->
@@ -330,7 +368,7 @@ function load(){
     S.data=j;
     $('whoami').textContent=j.user.name+' · ผู้ดูแลระบบ';
     $('scLogin').classList.add('hide'); $('scMain').classList.remove('hide');
-    drawMap(); drawCpTable(); drawClTable(); drawRpTable(); drawHdTable(); drawCfTable(); drawShiftPoint(); fillCpSelect();
+    drawMap(); drawCpTable(); drawClTable(); drawRpTable(); drawSpTable(); drawHdTable(); drawCfTable(); drawShiftPoint(); fillCpSelect();
   });
 }
 
@@ -339,7 +377,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(
   b.onclick=function(){
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(x){x.classList.remove('on');});
     b.classList.add('on');
-    ['cp','cl','rp','hd','cf'].forEach(function(t){ $('tab-'+t).classList.toggle('hide', t!==b.dataset.t); });
+    ['cp','cl','rp','sp','hd','cf'].forEach(function(t){ $('tab-'+t).classList.toggle('hide', t!==b.dataset.t); });
     if(b.dataset.t==='cp' && S.map) setTimeout(function(){ S.map.invalidateSize(); },50);
   };
 });
@@ -650,7 +688,7 @@ function hm(v){
 }
 
 function drawRpTable(){
-  var h='<tr><th>ประเภทวัน</th><th>รอบที่</th><th>เวลา / ช่วง</th><th>เปิดก่อน</th><th>ปิดหลัง</th><th>สถานะ</th><th></th></tr>';
+  var h='<tr><th>ประเภทวัน</th><th>รอบที่</th><th>เวลา / ช่วง</th><th>ชนิด</th><th>เปิดก่อน</th><th>ปิดหลัง</th><th>สถานะ</th><th></th></tr>';
   S.data.roundPlan.sort(function(a,b){
     return a.dayType===b.dayType ? (+a.roundNo)-(+b.roundNo) : (a.dayType<b.dayType?1:-1);
   }).forEach(function(p){
@@ -658,6 +696,9 @@ function drawRpTable(){
     var t=hm(p.schedTime), fe=hm(p.flexEndTime);
     h+='<tr><td>'+(p.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+'</td><td>'+esc(p.roundNo)+'</td>'+
        '<td><strong>'+esc(fe?(t+'–'+fe):t)+'</strong>'+(fe?' <span class="pill warn">ยืดหยุ่น</span>':'')+'</td>'+
+       '<td>'+(String(p.mode||'').toUpperCase()==='STATION'
+             ? '<span class="pill warn">ประจำจุด '+esc(p.cpCodes||'')+' · '+esc(p.minStayMin||0)+' น.</span>'
+             : 'เดินตรวจ')+'</td>'+
        '<td>'+(fe?'—':esc(p.graceEarlyMin)+' น.')+'</td><td>'+(fe?'—':esc(p.graceLateMin)+' น.')+'</td>'+
        '<td><span class="pill '+(on?'ok':'off')+'">'+(on?'ใช้งาน':'ปิด')+'</span></td>'+
        '<td><button class="ghost sm" data-rp="'+esc(p.planId)+'">แก้</button> '+
@@ -670,6 +711,8 @@ function drawRpTable(){
       $('rp_id').value=p.planId; $('rp_type').value=p.dayType; $('rp_no').value=p.roundNo;
       $('rp_time').value=hm(p.schedTime); $('rp_flexend').value=hm(p.flexEndTime);
       $('rp_early').value=p.graceEarlyMin; $('rp_late').value=p.graceLateMin;
+      $('rp_mode').value=(String(p.mode||'').toUpperCase()==='STATION')?'STATION':'PATROL';
+      $('rp_cps').value=p.cpCodes||''; $('rp_stay').value=p.minStayMin||'';
       window.scrollTo({top:0,behavior:'smooth'});
     };
   });
@@ -686,9 +729,63 @@ function drawRpTable(){
 $('btnSaveRp').onclick=function(){
   api('saveRoundPlan',{item:{planId:$('rp_id').value,dayType:$('rp_type').value,roundNo:$('rp_no').value,
     schedTime:$('rp_time').value,flexEndTime:$('rp_flexend').value,
-    graceEarlyMin:$('rp_early').value,graceLateMin:$('rp_late').value,active:'TRUE'}})
-  .then(function(){ $('rp_id').value=''; $('rp_flexend').value=''; return load(); })
+    graceEarlyMin:$('rp_early').value,graceLateMin:$('rp_late').value,active:'TRUE',
+    mode:$('rp_mode').value,cpCodes:$('rp_cps').value,minStayMin:$('rp_stay').value}})
+  .then(function(){ $('rp_id').value=''; $('rp_flexend').value=''; $('rp_cps').value=''; $('rp_stay').value=''; return load(); })
   .then(function(){ toast('บันทึกรอบแล้ว'); }).catch(function(e){ toast(e.message); });
+};
+
+function drawSpTable(){
+  var rows=S.data.shiftPlan||[];
+  var h='<tr><th>ชื่อกะ</th><th>เวลา</th><th>เข้าก่อนได้</th><th>สาย</th><th>ต่อเวร</th><th>บังคับรับเวร</th><th>สถานะ</th><th></th></tr>';
+  rows.slice().sort(function(a,b){ return hm(a.startTime)<hm(b.startTime)?-1:1; }).forEach(function(p){
+    var on=String(p.active).toUpperCase()==='TRUE';
+    h+='<tr><td><strong>'+esc(p.name)+'</strong></td>'+
+       '<td>'+esc(hm(p.startTime))+' – '+esc(hm(p.endTime))+'</td>'+
+       '<td>'+esc(p.graceEarlyMin)+' น.</td><td>เกิน '+esc(p.lateAfterMin)+' น.</td>'+
+       '<td>'+esc(p.handoverMin)+' น.</td>'+
+       '<td>'+(String(p.requireHandover).toUpperCase()==='TRUE'?'<span class="pill warn">บังคับ</span>':'—')+'</td>'+
+       '<td><span class="pill '+(on?'ok':'off')+'">'+(on?'ใช้งาน':'ปิด')+'</span></td>'+
+       '<td><button class="ghost sm" data-sp="'+esc(p.planId)+'">แก้</button> '+
+       '<button class="ghost sm" data-sptog="'+esc(p.planId)+'">'+(on?'ปิด':'เปิด')+'</button></td></tr>';
+  });
+  $('spTable').innerHTML=h;
+  Array.prototype.forEach.call($('spTable').querySelectorAll('[data-sp]'),function(b){
+    b.onclick=function(){
+      var p=(S.data.shiftPlan||[]).filter(function(x){return x.planId===b.dataset.sp;})[0];
+      $('sp_id').value=p.planId; $('sp_name').value=p.name;
+      $('sp_start').value=hm(p.startTime); $('sp_end').value=hm(p.endTime);
+      $('sp_early').value=p.graceEarlyMin; $('sp_late').value=p.lateAfterMin;
+      $('sp_ho').value=p.handoverMin; $('sp_note').value=p.note||'';
+      $('sp_req').checked=String(p.requireHandover).toUpperCase()==='TRUE';
+      window.scrollTo({top:0,behavior:'smooth'});
+    };
+  });
+  Array.prototype.forEach.call($('spTable').querySelectorAll('[data-sptog]'),function(b){
+    b.onclick=function(){
+      var p=(S.data.shiftPlan||[]).filter(function(x){return x.planId===b.dataset.sptog;})[0];
+      var on=String(p.active).toUpperCase()==='TRUE';
+      if(on && (S.data.shiftPlan||[]).filter(function(x){return String(x.active).toUpperCase()==='TRUE';}).length<=1)
+        return toast('ต้องเหลือกะที่ใช้งานอย่างน้อย 1 กะ');
+      api('saveShiftPlan',{item:Object.assign({},p,{startTime:hm(p.startTime),endTime:hm(p.endTime),
+        active:on?'FALSE':'TRUE'})}).then(load).then(function(){ toast('อัปเดตแล้ว'); });
+    };
+  });
+}
+$('btnNewSp').onclick=function(){
+  $('sp_id').value=''; $('sp_name').value=''; $('sp_note').value='';
+  $('sp_req').checked=true; $('sp_name').focus();
+};
+$('btnSaveSp').onclick=function(){
+  var n=$('sp_name').value.trim(); if(!n) return toast('ใส่ชื่อกะ');
+  if($('sp_start').value===$('sp_end').value) return toast('เวลาเข้าและออกเวรต้องไม่เท่ากัน');
+  api('saveShiftPlan',{item:{planId:$('sp_id').value,name:n,
+    startTime:$('sp_start').value,endTime:$('sp_end').value,
+    graceEarlyMin:$('sp_early').value,lateAfterMin:$('sp_late').value,
+    handoverMin:$('sp_ho').value,requireHandover:$('sp_req').checked?'TRUE':'FALSE',
+    active:'TRUE',note:$('sp_note').value}})
+  .then(function(){ $('sp_id').value=''; return load(); })
+  .then(function(){ toast('บันทึกกะแล้ว'); }).catch(function(e){ toast(e.message); });
 };
 
 function drawHdTable(){
