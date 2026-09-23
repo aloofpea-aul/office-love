@@ -338,7 +338,8 @@ function drawBoard(){
     h+='<tr><td class="rowlab"><b>รอบ '+r.roundNo+'</b>'+
        (isStation?' <span class="pill warn">ประจำจุด</span>':'')+'<br><span class="muted">'+
        (r.flex ? ('ยืดหยุ่น '+hhmm(r.openAt)+'–'+hhmm(r.closeAt)) : (hhmm(r.schedAt)+' น.'))+
-       (isStation?'<br>อยู่ '+(r.minStayMin||0)+' นาที':'')+'</span></td>';
+       (isStation?'<br>อยู่ '+(r.minStayMin||0)+' นาที':'')+
+       (isStation?midTag(r):'')+'</span></td>';
     d.checkpoints.forEach(function(cp){
       var c=map[r.roundId+'|'+cp.cpId];
       if(c){
@@ -679,6 +680,16 @@ function loadTrend(){
   }).catch(function(e){ if(isAuthErr(e)){ S.token='';
     try{ localStorage.removeItem('ol_sup_token'); }catch(_){} } });
 })();
+
+/* ผลการยืนยันตำแหน่งกลางทางของรอบประจำจุด */
+function midTag(r){
+  if(!r.midDueFrom || !r.midDueTo) return '';
+  var w=' ('+hhmm(r.midDueFrom)+'–'+hhmm(r.midDueTo)+')';
+  if(r.midResult==='OK')     return '<br><span class="pill ok">ยืนยันกลางทาง ✓</span>';
+  if(r.midResult==='MISSED') return '<br><span class="pill bad">ขาดการยืนยัน</span>'+w;
+  return '<br><span class="muted">รอยืนยัน'+w+'</span>';
+}
+
 </script>
 </body>
 </html>

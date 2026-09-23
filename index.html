@@ -437,9 +437,16 @@ a{color:var(--pri2)}
           <li>ถึงเวลา แตะรอบที่มีไอคอน 🪑 ในหน้าหลัก</li>
           <li>ไปยืนที่จุด C แล้วกด <b>เริ่มประจำจุด</b> ถ่ายรูป 1 ใบตามปกติ</li>
           <li>ระบบจะขึ้นนาฬิกานับเวลาให้เห็น เช่น <b>23 นาที</b></li>
-          <li>อยู่ประจำจุดให้ครบ <b>อย่างน้อย 60 นาที</b></li>
+          <li>ระบบจะสุ่มช่วงเวลาให้ 10 นาที เช่น <b>08:37–08:47</b> แสดงบนหน้าจอทันที
+              — จดไว้หรือตั้งนาฬิกาปลุก</li>
+          <li>อยู่ประจำจุดให้ครบ <b>อย่างน้อย 60 นาที</b> ระหว่างนี้ปิดหน้าจอเก็บมือถือได้เลย</li>
+          <li>พอถึงช่วงที่สุ่มไว้ เปิดแอปแล้วกด <b>📍 ยืนยันอยู่ประจำจุด</b>
+              ไม่ต้องถ่ายรูป ใช้เวลาไม่กี่วินาที</li>
           <li>ครบเวลาแล้วปุ่ม <b>จบการประจำจุด</b> จะกดได้ กดแล้วรอบนั้นถือว่าเสร็จ</li>
         </ol>
+        <div class="warn"><b>ช่วงยืนยันสุ่มใหม่ทุกรอบ</b> เดาล่วงหน้าไม่ได้
+          · ถ้าไม่ได้กดในช่วงนั้น รอบจะขึ้นว่า <b>ขาดการยืนยัน</b> และแจ้งหัวหน้าเวร
+          แต่ยังกดจบการประจำจุดได้ตามปกติ</div>
         <div class="ok">ขากลับ <b>ไม่ต้องถ่ายรูปซ้ำ</b> กดจบได้เลย</div>
         <div class="warn">กดจบก่อนครบเวลาไม่ได้ ระบบจะบอกว่าเหลืออีกกี่นาที
           · อยู่<b>นานกว่า</b> 60 นาทีได้ตามสะดวก ไม่มีเพดาน</div>
@@ -1349,6 +1356,42 @@ function roundNotOpen(r){
 
 /* ป้ายเวลาของรอบ — รอบยืดหยุ่นแสดงเป็นช่วงเวลาแทนเวลานัด */
 function isStation(r){ return !!r && String(r.mode||'')==='STATION'; }
+/* แถบยืนยันตำแหน่งกลางทาง — เปลี่ยนตามเวลา จึงวาดใหม่ได้เรื่อย ๆ */
+function midHtml(r){
+  if(!r || !r.midDueFrom || !r.midDueTo) return '';
+  if(r.midAt) return '<div class="banner ok">✅ ยืนยันตำแหน่งกลางทางแล้ว '+hhmm(r.midAt)+' น.</div>';
+  var f=new Date(r.midDueFrom).getTime(), t=new Date(r.midDueTo).getTime(), now=Date.now();
+  if(isNaN(f)||isNaN(t)) return '';
+  if(now<f)
+    return '<div class="banner warn">🔔 ต้องกลับมายืนยันตำแหน่งช่วง <b>'+hhmmMs(f)+'–'+hhmmMs(t)+' น.</b>'+
+           '<div style="font-size:14px;margin-top:4px">อีก '+Math.max(1,Math.ceil((f-now)/60000))+
+           ' นาที · ปิดหน้าจอเก็บมือถือได้ ไม่ต้องเปิดแอปค้าง</div></div>';
+  if(now<=t)
+    return '<div class="banner ok">📍 ถึงเวลายืนยันตำแหน่งแล้ว — เหลือเวลากดอีก '+
+           Math.max(1,Math.ceil((t-now)/60000))+' นาที</div>'+
+           '<button id="btnStMid">📍 ยืนยันอยู่ประจำจุด</button>';
+  return '<div class="banner bad">⚠️ ขาดการยืนยันช่วง '+hhmmMs(f)+'–'+hhmmMs(t)+
+         ' น. — รอบนี้จะขึ้นว่าไม่ครบ และระบบแจ้งหัวหน้าเวรแล้ว</div>';
+}
+function midConfirm(r,cp){
+  var b=$('btnStMid'); if(b){ b.disabled=true; b.textContent='กำลังอ่านตำแหน่ง…'; }
+  getPos().then(function(p){
+    return api('checkin',{ roundId:r.roundId, cpId:cp.cpId, phase:'MID',
+      lat:p.coords.latitude, lng:p.coords.longitude,
+      accuracyM:Math.round(p.coords.accuracy),
+      clientTs:new Date().toISOString(), ua:navigator.userAgent,
+      answers:[], photos:[], note:'ยืนยันกลางทาง' });
+  }).then(function(){
+    toast('ยืนยันตำแหน่งแล้ว ✅');
+    return loadHome();
+  }).then(function(){
+    var x=S.boot.rounds.filter(function(y){ return y.roundId===r.roundId; })[0];
+    if(x) openRound(x);
+  })['catch'](function(e){
+    toast((e&&e.message)||'ยืนยันไม่สำเร็จ',4500);
+    var q=$('btnStMid'); if(q){ q.disabled=false; q.textContent='📍 ยืนยันอยู่ประจำจุด'; }
+  });
+}
 function stayMin(r){ return (r && r.minStayMin) || 60; }
 function hhmmMs(ms){ var d=new Date(ms); return pad(d.getHours())+':'+pad(d.getMinutes()); }
 
@@ -1571,13 +1614,18 @@ function paintStation(box, r, closed){
   if(outMs){
     html+='<div class="banner ok">✅ เสร็จเรียบร้อย — ประจำจุด '+Math.round((outMs-inMs)/60000)+
           ' นาที ('+hhmm(r.inAt)+'–'+hhmm(r.outAt)+' น.)</div>';
+    if(r.midAt)                    html+='<div class="banner ok">✅ ยืนยันกลางทาง '+hhmm(r.midAt)+' น.</div>';
+    else if(r.midResult==='MISSED')html+='<div class="banner bad">⚠️ ขาดการยืนยันกลางทาง — แจ้งหัวหน้าเวรแล้ว</div>';
     box.innerHTML=html; return;
   }
   if(inMs){
     html+='<div class="stclock" id="stClock">—</div>'+
           '<div class="banner warn" id="stBar">กำลังนับเวลา…</div>'+
+          '<div id="stMid">'+midHtml(r)+'</div>'+
           '<button id="btnStOut" disabled>จบการประจำจุด</button>';
     box.innerHTML=html;
+    var bindMid=function(){ var m=$('btnStMid'); if(m) m.onclick=function(){ midConfirm(r,cp); }; };
+    bindMid();
     var tick=function(){
       var bar=$('stBar'); if(!bar){ clearInterval(ST_TIMER); return; }
       var m=Math.floor((Date.now()-inMs)/60000), left=need-m, btn=$('btnStOut');
@@ -1592,6 +1640,8 @@ function paintStation(box, r, closed){
         if(btn){ btn.disabled=false; btn.textContent='จบการประจำจุด'; }
       }
       if(closed && btn){ btn.disabled=true; btn.textContent='🔒 รอบนี้ปิดแล้ว'; }
+      var mbox=$('stMid');
+      if(mbox){ var nh=midHtml(r); if(mbox.innerHTML!==nh){ mbox.innerHTML=nh; bindMid(); } }
     };
     tick(); ST_TIMER=setInterval(tick, 10000);
     $('btnStOut').onclick=function(){ S.stationOut=true; openCheck(cp); };
