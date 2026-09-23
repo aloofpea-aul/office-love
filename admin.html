@@ -34,6 +34,14 @@ th{color:var(--dim);font-weight:600;font-size:14px}
 .pill{display:inline-block;font-size:13px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--dim)}
 .pill.ok{background:rgba(34,197,94,.18);color:#86efac}
 .pill.off{background:rgba(239,68,68,.18);color:#fca5a5}
+/* ค่าระบบ — แสดงเป็นการ์ด ไม่ใช่ตาราง เพราะบนมือถือช่องค่าจะถูกบีบจนมองไม่เห็นตัวเลข */
+.cfrow{border-bottom:1px solid var(--line);padding:12px 0}
+.cfrow:last-child{border-bottom:none}
+.cfhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cfhead code{font-size:14px;word-break:break-all;flex:1 1 auto;min-width:0}
+.cfhead input{width:110px;flex:0 0 auto;text-align:center;font-size:17px;font-weight:600}
+.cfhead button{flex:0 0 auto}
+.cfnote{font-size:13.5px;color:var(--dim);margin-top:6px;line-height:1.5}
 .banner{padding:11px 13px;border-radius:11px;font-size:15px;margin:10px 0}
 .banner.warn{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4)}
 .banner.bad{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4)}
@@ -263,7 +271,7 @@ th{color:var(--dim);font-weight:600;font-size:14px}
   <div id="tab-cf" class="hide">
     <div class="card">
       <h2>ค่าระบบ</h2>
-      <div style="overflow-x:auto"><table id="cfTable"></table></div>
+      <div id="cfTable"></div>
     </div>
 
     <div class="card">
@@ -515,6 +523,13 @@ function cfgVal(k,d){
   var r=(S.data.config||[]).filter(function(c){ return String(c.key)===k; })[0];
   return r?String(r.value):d;
 }
+/* อัปเดตค่าในหน่วยความจำ จะได้ไม่ต้องโหลดข้อมูลแอดมินใหม่ทั้งก้อนหลังบันทึกทีละค่า */
+function cfgPut(k,v){
+  if(!S.data.config) S.data.config=[];
+  var hit=null;
+  S.data.config.forEach(function(c){ if(String(c.key)===String(k)) hit=c; });
+  if(hit) hit.value=v; else S.data.config.push({key:String(k),value:v,note:''});
+}
 function drawShiftPoint(){
   if(!$('sp_lat')) return;
   $('sp_lat').value    = cfgVal('SHIFT_LAT','');
@@ -533,12 +548,16 @@ $('btnSpSave').onclick=function(){
   var b=this; b.disabled=true; $('spMsg').textContent='กำลังบันทึก…';
   var r=parseInt($('sp_radius').value,10);
   if(isNaN(r)||r<5){ $('spMsg').textContent='รัศมีต้องไม่ต่ำกว่า 5 เมตร'; b.disabled=false; return; }
-  Promise.all([
-    api('saveConfig',{key:'SHIFT_LAT',    value:$('sp_lat').value.trim()}),
-    api('saveConfig',{key:'SHIFT_LNG',    value:$('sp_lng').value.trim()}),
-    api('saveConfig',{key:'SHIFT_RADIUS_M',value:String(r)})
-  ]).then(function(){ toast('บันทึกจุดลงเวลาแล้ว'); return load(); })
-    .then(function(){ drawShiftPoint(); })
+  var la=$('sp_lat').value.trim(), lo=$('sp_lng').value.trim();
+  // ยิงครั้งเดียวสามค่า — เดิมยิงสามครั้งพร้อมกัน ทำให้รอนานและชนกันเองในชีต
+  api('saveConfig',{items:[
+    {key:'SHIFT_LAT',     value:la, note:'ละติจูดจุดลงเวลาเข้า-ออกเวร'},
+    {key:'SHIFT_LNG',     value:lo, note:'ลองจิจูดจุดลงเวลาเข้า-ออกเวร'},
+    {key:'SHIFT_RADIUS_M',value:String(r), note:'รัศมีจุดลงเวลา หน่วยเมตร'}
+  ]}).then(function(){
+      cfgPut('SHIFT_LAT',la); cfgPut('SHIFT_LNG',lo); cfgPut('SHIFT_RADIUS_M',String(r));
+      drawShiftPoint(); drawCfTable(); toast('บันทึกจุดลงเวลาแล้ว');
+    })
     .catch(function(e){ $('spMsg').textContent='บันทึกไม่สำเร็จ: '+e.message; })
     .then(function(){ b.disabled=false; });
 };
@@ -810,19 +829,25 @@ $('btnSaveHd').onclick=function(){
 };
 
 function drawCfTable(){
-  var h='<tr><th>คีย์</th><th>ค่า</th><th>คำอธิบาย</th><th></th></tr>';
+  var h='';
   S.data.config.forEach(function(c){
-    h+='<tr><td><code>'+esc(c.key)+'</code></td>'+
-       '<td><input value="'+esc(c.value)+'" data-k="'+esc(c.key)+'"></td>'+
-       '<td class="muted">'+esc(c.note)+'</td>'+
-       '<td><button class="ghost sm" data-cf="'+esc(c.key)+'">บันทึก</button></td></tr>';
+    h+='<div class="cfrow"><div class="cfhead">'+
+       '<code>'+esc(c.key)+'</code>'+
+       '<input value="'+esc(c.value)+'" data-k="'+esc(c.key)+'">'+
+       '<button class="ghost sm" data-cf="'+esc(c.key)+'">บันทึก</button>'+
+       '</div>'+
+       (c.note?('<div class="cfnote">'+esc(c.note)+'</div>'):'')+
+       '</div>';
   });
   $('cfTable').innerHTML=h;
   Array.prototype.forEach.call($('cfTable').querySelectorAll('[data-cf]'),function(b){
     b.onclick=function(){
       var inp=$('cfTable').querySelector('[data-k="'+b.dataset.cf+'"]');
+      b.disabled=true; b.textContent='กำลังบันทึก…';
       api('saveConfig',{key:b.dataset.cf,value:inp.value})
-        .then(function(){ toast('บันทึกแล้ว'); }).catch(function(e){ toast(e.message); });
+        .then(function(){ cfgPut(b.dataset.cf,inp.value); toast('บันทึกแล้ว'); })
+        .catch(function(e){ toast(e.message); })
+        .then(function(){ b.disabled=false; b.textContent='บันทึก'; });
     };
   });
 }
