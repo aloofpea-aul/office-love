@@ -405,6 +405,8 @@ function drawShifts(){
     return '<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
       '<div class="row between"><div><strong>'+esc(x.guardName)+'</strong>'+
       (x.shiftName?' <span class="muted">· '+esc(x.shiftName)+'</span>':'')+
+      ((+x.contRound||1)>1?' <span class="pill warn">🔁 ควงกะ ผลัดที่ '+(+x.contRound)+'</span>':'')+
+      (x.contTo?' <span class="pill warn">🔁 ควงต่อ</span>':'')+
       '<div class="muted">เข้า '+hhmm(x.checkInAt)+' น. · ออก '+
       (x.checkOutAt?hhmm(x.checkOutAt)+' น.':'ยังไม่ออก')+
       (x.plannedStart?' · ตามแผน '+hhmm(x.plannedStart)+'–'+hhmm(x.plannedEnd):'')+'</div></div>'+

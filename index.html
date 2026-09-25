@@ -529,6 +529,19 @@ a{color:var(--pri2)}
         <p>คนที่<b>รับเวร</b>จะเห็นแถบข้อความส่งต่อบนหน้าหลัก ให้กด
            <b>รับทราบ</b> หลังอ่านแล้ว หัวหน้าเวรดูได้ว่าใครส่งต่ออะไรและรับทราบหรือยัง</p>
 
+        <h4 style="margin:14px 0 6px">ควงกะ — ทำต่ออีกผลัด</h4>
+        <p>ถ้าวันนั้นท่านต้องทำต่ออีกผลัด (เช่น เข้าศุกร์เช้า แล้วทำต่อถึงอาทิตย์เช้า)
+           <b>ไม่ต้องใช้ปุ่มออกเวรฉุกเฉิน</b> ให้กดปุ่ม <b>🔁 ควงกะต่ออีกผลัด</b> แทน</p>
+        <ul>
+          <li>ปุ่มจะขึ้นให้เห็น <b>30 นาทีก่อนหมดกะ</b> และเฉพาะตอนที่ยังไม่มีใครมารับเวร</li>
+          <li>กดครั้งเดียว ระบบปิดกะเดิมแล้วเปิดกะใหม่ให้ทันที ไม่มีช่องว่าง</li>
+          <li>ไม่ต้องถ่ายรูป แค่ต้องอยู่ในรัศมีจุดลงเวลา</li>
+          <li>แต้มได้ครบเหมือนเข้าเวรวันปกติทุกอย่าง</li>
+        </ul>
+        <div class="warn">ควงได้สูงสุด <b>2 ผลัดติดกัน</b> (รวม 48 ชั่วโมง)
+          ครบแล้วปุ่มจะหายไป ต้องมีคนมารับเวรเท่านั้น — ผู้ดูแลระบบปรับเพดานนี้ได้ที่ค่า
+          <b>MAX_CONT_SHIFT</b></div>
+
         <h4 style="margin:14px 0 6px">ออกเวรฉุกเฉิน</h4>
         <p>ถ้าจำเป็นต้องออกจริง ๆ ทั้งที่ยังไม่มีคนรับ ให้กดลิงก์
            <b>ออกเวรฉุกเฉิน</b> ใต้ปุ่ม แล้วเลือกเหตุผล เช่น ป่วยกะทันหัน /
@@ -1214,7 +1227,9 @@ function paintShift(){
     var head='<div class="row between"><div>'+
       '<div class="muted">'+(sh.shiftName||'อยู่ระหว่างเวร')+
         (sh.plannedStart?' · '+hhmm(sh.plannedStart)+'–'+hhmm(sh.plannedEnd)+' น.':'')+'</div>'+
-      '<h3 style="margin:2px 0 0">เข้าเวร '+hhmm(sh.checkInAt)+' น.</h3></div>'+
+      '<h3 style="margin:2px 0 0">เข้าเวร '+hhmm(sh.checkInAt)+' น.'+
+        ((+sh.contRound||1)>1?' <span class="pill warn">🔁 ผลัดที่ '+sh.contRound+'</span>':'')+
+      '</h3></div>'+
       '<span class="pill '+(sh.onTime?'ok':'warn')+'">'+
         (sh.onTime?'ตรงเวลา':'สาย '+sh.lateMin+' นาที')+'</span></div>';
 
@@ -1230,14 +1245,28 @@ function paintShift(){
            (taker?' · '+taker.name+' เข้าเวรแล้ว':' · ยังไม่มีผู้รับเวร')+'</div>';
 
     var canOut = !needTaker || !!taker;
+
+    /* ควงกะ — ขึ้นเฉพาะตอนใกล้หมดกะ ยังไม่มีคนมารับ และยังไม่ครบเพดาน */
+    var contRound=+sh.contRound||1, maxCont=+sh.maxCont||2;
+    var contTime = !!sh.contOpenAt && Date.now()>=new Date(sh.contOpenAt).getTime();
+    var contBtn='';
+    if(!taker && contTime){
+      contBtn = (contRound<maxCont)
+        ? '<button class="btn-ghost" id="btnCont" style="margin-top:8px">🔁 ควงกะต่ออีกผลัด</button>'
+        : '<p class="muted" style="font-size:13px;margin:10px 0 0;text-align:center">'+
+          'ทำเวรต่อเนื่องครบ '+maxCont+' ผลัดแล้ว — ต้องมีคนมารับเวร</p>';
+    }
+
     var btn = canOut
-      ? '<button class="btn-ghost" id="btnOut">ออกเวร'+(taker?' · ส่งเวรให้ '+taker.name:'')+'</button>'
+      ? '<button class="btn-ghost" id="btnOut">ออกเวร'+(taker?' · ส่งเวรให้ '+taker.name:'')+'</button>'+contBtn
       : '<button class="btn-ghost" id="btnOut" disabled>🔒 ยังไม่มีผู้รับเวร</button>'+
         '<button class="btn-ghost" id="btnPing" style="margin-top:8px">🔔 เตือนคนกะถัดไป</button>'+
+        contBtn+
         '<p class="muted" style="font-size:13px;margin:10px 0 0;text-align:center">'+
         '<a href="#" id="lnkEmg" style="color:#fca5a5">ออกเวรฉุกเฉิน</a></p>';
 
     b.innerHTML=head+info+'<div style="height:12px"></div>'+btn;
+    if($('btnCont')) $('btnCont').onclick=function(){ doShiftCont(this); };
 
     if(canOut) $('btnOut').onclick=function(){ doShiftOut(this, taker, false); };
     else{
@@ -1314,6 +1343,28 @@ function doShiftOut(btn, taker, emergency, reason){
     var m=String(e.message||'');
     if(m.indexOf('NO_TAKER|')===0){ toast(m.split('|')[1],4000); loadHome(); return; }
     toast(m,4000); btn.disabled=false;
+  });
+}
+
+function doShiftCont(btn){
+  var sh=S.boot.shift||{}, n=(+sh.contRound||1)+1;
+  if(!confirm('ควงกะต่ออีก 1 ผลัด\n\n'+
+              'ระบบจะปิดกะปัจจุบันตอนนี้ แล้วเริ่มกะใหม่ทันที\n'+
+              'จะเป็นผลัดที่ '+n+' ติดต่อกัน\n\nยืนยันหรือไม่')) return;
+  btn.disabled=true; btn.textContent='กำลังบันทึก…';
+  getPos().catch(function(){ return null; }).then(function(p){
+    return shiftBody(p,'ควงกะต่อ').then(function(bd){
+      if(!bd){ btn.disabled=false; btn.textContent='🔁 ควงกะต่ออีกผลัด'; return null; }
+      return api('shiftCont', bd);
+    });
+  }).then(function(r){
+    if(!r) return;
+    toast('ควงกะเรียบร้อย · ผลัดที่ '+r.contRound+
+          (r.plannedEnd?' · ครบกำหนด '+hhmm(r.plannedEnd)+' น. วันพรุ่งนี้':''), 5000);
+    return loadHome();
+  }).catch(function(e){
+    toast((e&&e.message)||'ควงกะไม่สำเร็จ',4500);
+    btn.disabled=false; btn.textContent='🔁 ควงกะต่ออีกผลัด';
   });
 }
 
