@@ -179,19 +179,26 @@ button:active,.btn:active,a.btn:active,.cp:active,.round:active{transform:scale(
   padding:0 12px;margin:-6px 0 -6px -12px}
 
 /* สไลด์ตอนเปลี่ยนหน้า */
-@keyframes slR{from{transform:translateX(28px);opacity:.3}to{transform:none;opacity:1}}
-@keyframes slL{from{transform:translateX(-28px);opacity:.3}to{transform:none;opacity:1}}
-.anim-fwd{animation:slR .22s cubic-bezier(.22,.7,.3,1) both}
-.anim-back{animation:slL .22s cubic-bezier(.22,.7,.3,1) both}
+@keyframes slR{from{transform:translateX(46px);opacity:.15}to{transform:none;opacity:1}}
+@keyframes slL{from{transform:translateX(-46px);opacity:.15}to{transform:none;opacity:1}}
+.anim-fwd{animation:slR .27s cubic-bezier(.22,.7,.3,1) both}
+.anim-back{animation:slL .27s cubic-bezier(.22,.7,.3,1) both}
+
+/* แผงผู้ดูแลระบบ */
+.admgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.admgrid>div{background:var(--card2);border:1px solid var(--line);border-radius:12px;
+  padding:9px 3px;text-align:center}
+.admgrid b{display:block;font-size:23px;line-height:1.15}
+.admgrid span{font-size:11.5px;color:var(--dim)}
 
 /* แถบเมนูล่างจอ */
 #tabbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;
-  background:linear-gradient(180deg,var(--card2) 0%,#231e38 100%);
+  background:var(--card2);
   border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom,0px)}
-/* อุดแถบดำใต้แถบเมนู — พื้นที่ home indicator ของ iPhone บางรุ่นสูงกว่าที่ env() รายงาน */
-#tabbar::after{content:'';position:absolute;left:0;right:0;top:100%;height:90px;
-  background:#231e38;pointer-events:none}
+/* อุดพื้นที่ home indicator ด้วยสีเดียวกัน จะได้ไม่เห็นเป็นแถบว่าง */
+#tabbar::after{content:'';position:absolute;left:0;right:0;top:100%;height:120px;
+  background:var(--card2);pointer-events:none}
 #tabbar button{position:relative;flex:1;background:none;border:0;color:var(--dim);width:auto;
   border-radius:0;padding:10px 0 9px;font-size:11.5px;font-weight:600;line-height:1.3}
 #tabbar button .ic{display:block;font-size:22px;line-height:1.1;margin-bottom:1px;
@@ -316,6 +323,24 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
     <button class="btn-ghost btn-sm" id="btnLogout">ออก</button>
   </div></div>
   <div class="wrap">
+    <div id="admCard" class="card hide" style="border-color:var(--pri)">
+      <div class="row between">
+        <div>
+          <div class="muted" style="font-size:13px">แผงผู้ดูแลระบบ</div>
+          <h3 style="margin:2px 0 0">ภาพรวมวันนี้</h3>
+        </div>
+        <span class="pill" id="admClock">—</span>
+      </div>
+      <div class="admgrid" id="admGrid"></div>
+      <div id="admOn" style="font-size:15px;margin-top:11px"></div>
+      <div class="row" style="gap:8px;margin-top:12px">
+        <a class="btn btn-ghost" href="supervisor.html"
+           style="text-decoration:none;flex:1;margin:0">📋 หัวหน้าเวร</a>
+        <a class="btn btn-ghost" href="admin.html"
+           style="text-decoration:none;flex:1;margin:0">⚙️ ตั้งค่าระบบ</a>
+      </div>
+    </div>
+
     <div id="ptCard" class="ptcard hide">
       <div class="row between">
         <div>
@@ -807,6 +832,21 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
     <button class="back" id="btnSfx" style="margin:0 -12px 0 0" title="เปิด/ปิดเสียง">🔊</button>
   </div></div>
   <div class="wrap">
+    <div class="card">
+      <div class="row between">
+        <div>
+          <strong>เสียงและเอฟเฟกต์</strong>
+          <div class="muted" style="font-size:14px" id="sfxState">—</div>
+        </div>
+        <button class="btn-ghost btn-sm" id="btnSfxTest" style="width:auto">🔔 ทดสอบ</button>
+      </div>
+      <div style="height:10px"></div>
+      <button class="btn-ghost" id="btnSfxToggle">🔊 เสียง: เปิด</button>
+      <div class="muted" style="font-size:13.5px;margin-top:9px">
+        กดทดสอบแล้วไม่ได้ยินเสียงบน iPhone ให้ดู <b>สวิตช์ปิดเสียงข้างเครื่อง</b>
+        กับระดับเสียงสื่อก่อน — Safari จะเงียบตามสวิตช์นั้น</div>
+    </div>
+
     <div class="card" style="text-align:center">
       <img id="meAvatarBig" class="avatar lg" alt="">
       <h2 id="meNameBig" style="margin:10px 0 2px"></h2>
@@ -993,11 +1033,17 @@ function tone(f,at,dur,vol,type){
     o.start(t0); o.stop(t0+dur+.03);
   }catch(e){}
 }
-function sfxTap()  { tone(880,0,.045,.05,'triangle'); }
-function sfxOk()   { tone(784,0,.12,.15); tone(1175,.085,.2,.13); }
-function sfxDone() { tone(659,0,.13,.14); tone(880,.1,.13,.14); tone(1319,.2,.32,.12); }
-function sfxErr()  { tone(233,0,.17,.15,'square'); tone(175,.14,.24,.13,'square'); }
-function sfxAlert(){ tone(1046,0,.1,.15); tone(1046,.17,.1,.15); tone(1046,.34,.18,.15); }
+function sfxTap()  { tone(880,0,.05,.12,'triangle'); }
+function sfxOk()   { tone(784,0,.13,.34); tone(1175,.09,.22,.30); }
+function sfxDone() { tone(659,0,.14,.32); tone(880,.11,.14,.32); tone(1319,.22,.34,.28); }
+function sfxErr()  { tone(233,0,.18,.32,'square'); tone(175,.15,.26,.28,'square'); }
+function sfxAlert(){ tone(1046,0,.11,.34); tone(1046,.18,.11,.34); tone(1046,.36,.2,.34); }
+function sfxWhy(){
+  if(!SFX.on) return 'ปิดเสียงอยู่ — กดปุ่มด้านล่างเพื่อเปิด';
+  if(!SFX.ac) return 'ยังไม่ได้เปิดระบบเสียง — กดทดสอบหนึ่งครั้ง';
+  if(SFX.ac.state!=='running') return 'ระบบเสียงถูกพัก — กดทดสอบอีกครั้ง';
+  return 'เปิดเสียงอยู่ · พร้อมใช้งาน';
+}
 function buzz(ms)  { try{ if(navigator.vibrate) navigator.vibrate(ms||28); }catch(e){} }
 
 /* ป๊อปสำเร็จกลางจอ */
@@ -1193,7 +1239,7 @@ function loadHome(){
     var nSched=((j.rounds||[]).filter(function(r){ return String(r.mode||'')!=='FREE'; })).length;
   p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+' · '+nSched+' รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
-    paintMe(); paintShift(); paintHandover(); paintRounds(); startReminder();
+    paintMe(); paintAdmin(); paintShift(); paintHandover(); paintRounds(); startReminder();
     var staff = j.user.role==='SUPERVISOR' || j.user.role==='ADMIN';
     $('staffLinks').classList.toggle('hide', !staff);
     $('lnkAdmin').classList.toggle('hide', j.user.role!=='ADMIN');
@@ -1218,6 +1264,7 @@ function loadPoints(){
 function paintPoints(p){
   if(!p) return;
   S.pt = p;
+  if(S.me && S.me.role==='ADMIN'){ $('ptCard').classList.add('hide'); return; }
   $('ptCard').classList.remove('hide');
   $('ptLevel').textContent = 'ระดับ ' + p.level + ' · ' + p.levelName;
   $('ptLife').textContent  = 'แต้มสะสม ' + ptFmt(p.lifetime) +
@@ -2444,6 +2491,65 @@ $('btnBackHome').onclick=function(){ goBack(); };
 $('btnBackRound').onclick=function(){ goBack(); };
 
 /* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
+/* แผงผู้ดูแลระบบ — สรุปจากข้อมูลที่หน้าหลักมีอยู่แล้ว ไม่ต้องยิง API เพิ่ม */
+function paintAdmin(){
+  var adm = S.me && S.me.role==='ADMIN';
+  $('admCard').classList.toggle('hide', !adm);
+  if(!adm) return;
+  $('ptCard').classList.add('hide');
+
+  var n={ok:0,run:0,wait:0,bad:0};
+  (S.boot.rounds||[]).forEach(function(r){
+    if(String(r.mode||'')==='FREE') return;
+    var s=String(r.status);
+    if(s==='COMPLETE')           n.ok++;
+    else if(s==='IN_PROGRESS')   n.run++;
+    else if(s==='MISSED'||s==='PARTIAL') n.bad++;
+    else                          n.wait++;
+  });
+  $('admGrid').innerHTML=
+    '<div><b style="color:var(--ok)">'+n.ok+'</b><span>ครบ</span></div>'+
+    '<div><b style="color:var(--pri2)">'+n.run+'</b><span>กำลังเดิน</span></div>'+
+    '<div><b>'+n.wait+'</b><span>รอเวลา</span></div>'+
+    '<div><b style="color:var(--bad)">'+n.bad+'</b><span>ขาด/ไม่ครบ</span></div>';
+
+  var on=[];
+  if(S.boot.shift) on.push({name:S.me.name+' (คุณ)',at:S.boot.shift.checkInAt});
+  (S.boot.othersOnDuty||[]).forEach(function(x){ on.push({name:x.name,at:x.checkInAt}); });
+  $('admOn').innerHTML = on.length
+    ? '🟢 อยู่เวรตอนนี้ — '+on.map(function(x){
+        return '<b>'+x.name+'</b> <span class="muted">เข้า '+hhmm(x.at)+' น.</span>'; }).join(' · ')
+    : '<span style="color:var(--warn)">⚠️ ยังไม่มีใครลงเวลาเข้าเวรวันนี้</span>';
+
+  var sv=new Date(S.boot.serverTime).getTime();
+  var df=isNaN(sv)?0:Math.round((Date.now()-sv)/60000);
+  var okClock=Math.abs(df)<=2;
+  $('admClock').textContent = okClock ? 'นาฬิกาตรง' : 'เครื่องคลาด '+Math.abs(df)+' นาที';
+  $('admClock').className   = 'pill '+(okClock?'ok':'warn');
+}
+
+/* ปุ่มเสียง */
+function sfxPaint(){
+  var a=$('btnSfxToggle'), b=$('btnSfx'), s=$('sfxState');
+  if(a) a.textContent = SFX.on ? '🔊 เสียง: เปิด' : '🔇 เสียง: ปิด';
+  if(b) b.textContent = SFX.on ? '🔊' : '🔇';
+  if(s) s.textContent = sfxWhy();
+}
+function sfxFlip(){
+  SFX.on=!SFX.on;
+  try{ localStorage.setItem('ol_sfx', SFX.on?'1':'0'); }catch(e){}
+  if(SFX.on){ sfxUnlock(); setTimeout(sfxOk,60); }
+  sfxPaint();
+  toast(SFX.on?'เปิดเสียงแล้ว':'ปิดเสียงแล้ว');
+}
+$('btnSfxToggle').onclick = sfxFlip;
+$('btnSfxTest').onclick = function(){
+  sfxUnlock();
+  setTimeout(function(){ sfxDone(); }, 60);
+  fxOk('🔔'); buzz(40); sfxPaint();
+};
+sfxPaint();
+
 function curScreen(){ return SC_CUR; }
 function stopCamSafe(){ try{ stopCam(); }catch(e){} }
 
@@ -2488,14 +2594,7 @@ Array.prototype.forEach.call($('tabbar').children, function(b){
 });
 
 /* ปุ่มเปิด/ปิดเสียง */
-$('btnSfx').onclick=function(){
-  SFX.on=!SFX.on;
-  try{ localStorage.setItem('ol_sfx', SFX.on?'1':'0'); }catch(e){}
-  this.textContent = SFX.on?'🔊':'🔇';
-  if(SFX.on){ sfxUnlock(); sfxOk(); }
-  toast(SFX.on?'เปิดเสียงแล้ว':'ปิดเสียงแล้ว');
-};
-(function(){ var b=$('btnSfx'); if(b) b.textContent = SFX.on?'🔊':'🔇'; })();
+$('btnSfx').onclick = sfxFlip;
 
 /* ========================= เริ่มทำงาน ========================= */
 (function init(){
