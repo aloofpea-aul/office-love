@@ -19,8 +19,10 @@
 
 var CFG = {
   DB_SHEET_ID       : '16FDAI8YlOMXlRxTTB6iiy6_4yB48Chv3D3PJBNxRKH4',  // ชีต OfficeLove_DB
-  PLATFORM_SHEET_ID : '',            // เว้นว่าง = ใช้แท็บ Admins/Members ในชีตเดียวกัน
-                                     // ถ้าจะย้ายไปใช้ชีตล็อกอินกลางของแพลตฟอร์มทีหลัง ค่อยใส่ ID ตรงนี้
+  // ชี้มาที่ไฟล์จริงเสมอ เพื่อให้รายชื่อผู้ใช้เป็นชุดเดียวกัน แม้บัญชีทดสอบจะเขียนข้อมูลลงไฟล์ทดสอบ
+  PLATFORM_SHEET_ID : '16FDAI8YlOMXlRxTTB6iiy6_4yB48Chv3D3PJBNxRKH4',
+  // ไฟล์ฐานข้อมูลสำหรับบัญชีทดสอบ (Members คอลัมน์ Test = TRUE) — เว้นว่าง = ปิดโหมดทดสอบ
+  TEST_DB_SHEET_ID  : '1rcDnh7QHSaOrh1LFzWme6qbGr91o7IwOMqHpGRykxTs',
   APP_CODE          : 'OFFICELOVE',  // ค่าที่ต้องมีในคอลัมน์ Apps ของแพลตฟอร์ม
   DRIVE_ROOT        : 'OfficeLove',  // โฟลเดอร์เก็บรูปใน Drive
   TZ                : 'Asia/Bangkok',
@@ -49,13 +51,13 @@ var SCHEMA = {
   Shifts         : ['shiftId','workDate','guardUserId','guardName','checkInAt','checkInLat','checkInLng',
                     'checkOutAt','checkOutLat','checkOutLng','status','note',
                     'planId','shiftName','plannedStart','plannedEnd','lateMin','onTime','earlyOutMin',
-                    'handoverId','emergency','emergencyReason'],
+                    'handoverId','emergency','emergencyReason','contFrom','contTo'],
   ShiftPlan      : ['planId','name','startTime','endTime','graceEarlyMin','lateAfterMin','handoverMin',
                     'requireHandover','active','note'],
   Handovers      : ['hoId','workDate','ts','outUserId','outName','inUserId','inName','note','ackAt','status'],
   Rounds         : ['roundId','workDate','dayType','roundNo','schedAt','openAt','closeAt','flex',
                     'guardUserId','shiftId','status','startedAt','finishedAt','pointsDone','pointsTotal',
-                    'mode','cpCodes','minStayMin'],
+                    'mode','cpCodes','minStayMin','midDueFrom','midDueTo','midResult'],
   Checkins       : ['checkinId','roundId','cpId','userId','userName','ts','clientTs','lat','lng',
                     'accuracyM','distanceM','verifyResult','overrideReason','ua','phase','note'],
   CheckinAnswers : ['checkinId','itemId','value','remark'],
@@ -102,6 +104,7 @@ function _route(req) {
       case 'bootstrap'       : return apiBootstrap(auth(req));
       case 'shiftIn'         : return apiShiftIn(auth(req), req);
       case 'shiftOut'        : return apiShiftOut(auth(req), req);
+      case 'shiftCont'       : return apiShiftCont(auth(req), req);
       case 'handoverAck'     : return apiHandoverAck(auth(req), req);
       case 'pingNextShift'   : return apiPingNextShift(auth(req));
       case 'checkin'         : return apiCheckin(auth(req), req);
@@ -125,6 +128,7 @@ function _route(req) {
 
       // --- ผู้ดูแล ---
       case 'adminData'       : return apiAdminData(auth(req, ['ADMIN']));
+      case 'ownerOverview'   : return apiOwnerOverview(auth(req, ['ADMIN']));
       case 'saveCheckpoint'  : return apiSaveCheckpoint(auth(req, ['ADMIN']), req);
       case 'saveChecklist'   : return apiSaveChecklist(auth(req, ['ADMIN']), req);
       case 'saveRoundPlan'   : return apiSaveRoundPlan(auth(req, ['ADMIN']), req);
@@ -148,7 +152,14 @@ function err(msg)  { return { ok: false, error: String(msg) }; }
 // ===========================================================================
 // ชีต / ตาราง
 // ===========================================================================
+/* โหมดทดสอบ — ตั้งครั้งเดียวตอนตรวจโทเคน แล้วทุกตารางจะวิ่งไปไฟล์ทดสอบเองทั้งระบบ
+   เพราะโค้ดทุกส่วนเปิดฐานข้อมูลผ่าน db() จุดเดียว */
+var TEST_MODE = false;
+function testOn(v) { TEST_MODE = !!v; }
+function isTest()  { return TEST_MODE; }
+
 function db() {
+  if (TEST_MODE && CFG.TEST_DB_SHEET_ID) return SpreadsheetApp.openById(CFG.TEST_DB_SHEET_ID);
   return CFG.DB_SHEET_ID ? SpreadsheetApp.openById(CFG.DB_SHEET_ID)
                          : SpreadsheetApp.getActiveSpreadsheet();
 }
@@ -199,10 +210,11 @@ function ensureCols(tab, cols) {
 /** คอลัมน์ที่ระบบรุ่นใหม่ต้องใช้ — เรียกตอนเปิดแอปและตอนสร้างรอบ */
 function ensureRoundCols() {
   ensureCols('RoundPlan', ['mode', 'cpCodes', 'minStayMin']);
-  ensureCols('Rounds',    ['mode', 'cpCodes', 'minStayMin']);
+  ensureCols('Rounds',    ['mode', 'cpCodes', 'minStayMin', 'midDueFrom', 'midDueTo', 'midResult']);
   ensureCols('Checkins',  ['phase', 'note']);
   ensureCols('Shifts',    ['planId', 'shiftName', 'plannedStart', 'plannedEnd', 'lateMin',
-                           'onTime', 'earlyOutMin', 'handoverId', 'emergency', 'emergencyReason']);
+                           'onTime', 'earlyOutMin', 'handoverId', 'emergency', 'emergencyReason',
+                           'contFrom', 'contTo']);
 }
 
 function appendRow(name, obj) {
@@ -244,6 +256,13 @@ function uid(n) {
 }
 function nowIso()      { return toIso(new Date()); }
 function toIso(d)      { return Utilities.formatDate(d, CFG.TZ, "yyyy-MM-dd'T'HH:mm:ssXXX"); }
+/** เวลาจากเครื่องผู้ใช้ (ส่งมาเป็น UTC) — แปลงเป็นเวลาไทยก่อนเก็บ จะได้อ่านในชีตได้ตรง */
+function localIso(v) {
+  var t = String(v || '').trim();
+  if (!t) return '';
+  var d = new Date(t);
+  return isNaN(d.getTime()) ? t : toIso(d);
+}
 function fmt(d, p)     { return Utilities.formatDate(d, CFG.TZ, p); }
 function parseIso(s)   { return (s instanceof Date) ? s : new Date(String(s)); }
 function num(v, d)     { var n = parseFloat(v); return isNaN(n) ? (d === undefined ? 0 : d) : n; }
@@ -387,6 +406,7 @@ function auth(req, roles) {
   var u = verifyToken(req.token);
   if (!u) throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
   if (roles && roles.indexOf(u.role) < 0) throw new Error('ไม่มีสิทธิ์ใช้งานส่วนนี้');
+  testOn(!!u.test);
   return u;
 }
 
@@ -579,15 +599,22 @@ function apiLogin(req) {
 
   if (!found) return err('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
 
+  // บัญชีทดสอบ — ดูจากคอลัมน์ Test ในแท็บ Members ไม่เกี่ยวกับ Role
+  var isT = !!CFG.TEST_DB_SHEET_ID &&
+            bool(pick(found, ['Test','TEST','Testing','บัญชีทดสอบ','ทดสอบ']));
+
   var exp = new Date(Date.now() + CFG.TOKEN_TTL_DAYS * 86400000);
   var me = {
     userId : String(pick(found, ['UserId','Username','Phone','เบอร์โทร','Email']) || user),
     name   : String(pick(found, ['Name','ชื่อ-สกุล','ชื่อ','FullName']) || user),
     role   : role,
+    test   : isT,
     exp    : toIso(exp)
   };
+  testOn(isT);
   audit(me.userId, 'LOGIN', 'USER', me.userId);
-  return ok({ token: signToken(me), user: { userId: me.userId, name: me.name, role: me.role } });
+  return ok({ token: signToken(me),
+              user: { userId: me.userId, name: me.name, role: me.role, test: isT } });
 }
 
 // ===========================================================================
@@ -720,7 +747,113 @@ function dailyGenerateRounds() {
 }
 
 /** trigger ทุก 15 นาที — ปิดรอบที่เลยเวลา + เตือนก่อนถึงรอบ */
+
+// ===========================================================================
+// งานซ่อมข้อมูลครั้งเดียว — ทำงานอัตโนมัติรอบแรกที่ tickRounds วิ่ง แล้วไม่ทำซ้ำอีก
+// ===========================================================================
+var FIX_VER = 1;
+
+function runOneTimeFixes() {
+  if (num(cfgGet('FIX_VER', 0)) >= FIX_VER) return;
+
+  var log = null;
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return;
+  try {
+    if (num(cfgGet('FIX_VER', 0)) >= FIX_VER) return;   // กันชนกันสองรอบ
+    log = fixMixedRoundSets();
+    cfgSet('FIX_VER', FIX_VER, 'รุ่นของงานซ่อมข้อมูลที่ทำไปแล้ว — ห้ามแก้');
+    audit('system', 'ONE_TIME_FIX', 'ROUNDS', 'FIX' + FIX_VER, null, log);
+  } finally { lock.releaseLock(); }
+
+  // คิดแต้มใหม่หลังปล่อยล็อกแล้ว เพราะ rebuildPoints ขอล็อกของมันเอง
+  if (log && log.checkinsMoved) { try { rebuildPoints(); } catch (e) {} }
+}
+
+/**
+ * ซ่อมวันที่มีรอบสองชุดปนกัน (ชุดเก่า 6 รอบ ที่สร้างไว้ก่อนเพิ่มรอบประจำจุด)
+ *  - เปลี่ยนเลขรอบชุดเก่า 1–6 เป็น 4–9 ให้ตรงกับแผนปัจจุบัน และเติม mode=PATROL
+ *  - รอบที่ถูกปิดด้วยการเช็คอิน "ก่อนเวลาเปิดรอบ" ให้คืนสถานะเป็น PENDING
+ *  - ย้ายเช็คอินที่เกิดก่อนเวลาเปิดรอบ ไปเป็นรอบตรวจอิสระของวันที่เช็คอินจริง
+ */
+function fixMixedRoundSets() {
+  ensureRoundCols();
+  var rounds   = readTable('Rounds');
+  var checkins = readTable('Checkins');
+  var moved = 0, renum = 0, reset = 0;
+
+  // 1) วันไหนมีรอบประจำจุดแล้ว แต่ยังมีรอบชุดเก่าเลข 1–6 ปนอยู่
+  var stationDays = {};
+  rounds.forEach(function (r) {
+    if (String(r.mode || '').toUpperCase() === 'STATION') stationDays[dstr(r.workDate)] = true;
+  });
+
+  rounds.forEach(function (r) {
+    var wd = dstr(r.workDate);
+    if (!stationDays[wd]) return;
+    if (String(r.mode || '').toUpperCase() !== '') return;      // เฉพาะแถวเก่าที่ยังไม่มี mode
+    var no = num(r.roundNo);
+    if (no < 1 || no > 6) return;
+    updateRow('Rounds', r._row, { roundNo: no + 3, mode: 'PATROL' });
+    renum++;
+  });
+
+  // 2) รอบที่ปิดไปแล้วทั้งที่เช็คอินเกิดก่อนเวลาเปิดรอบ
+  SpreadsheetApp.flush();
+  rounds = readTable('Rounds');
+  var byRound = {};
+  checkins.forEach(function (c) {
+    var k = String(c.roundId);
+    (byRound[k] = byRound[k] || []).push(c);
+  });
+
+  rounds.forEach(function (r) {
+    if (String(r.mode || '').toUpperCase() === 'FREE') return;
+    var list = byRound[String(r.roundId)] || [];
+    if (!list.length) return;
+    var openMs = parseIso(r.openAt).getTime();
+    if (isNaN(openMs)) return;
+
+    var early = list.filter(function (c) { return parseIso(c.ts).getTime() < openMs; });
+    if (!early.length || early.length !== list.length) return;   // ย้ายเฉพาะรอบที่ "ก่อนเวลา" ทั้งรอบ
+
+    early.forEach(function (c) {
+      var wd  = workDateOf(parseIso(c.ts));
+      var fr  = freeRoundOf(wd);
+      if (!fr) return;
+      updateRow('Checkins', c._row, {
+        roundId: String(fr.roundId),
+        note: String(c.note || '') + ' [ย้ายจากรอบ ' + num(r.roundNo) + ' ' +
+              fmt(parseIso(r.schedAt), 'HH:mm') + ' น. — เช็คอินก่อนเวลาเปิดรอบ]'
+      });
+      moved++;
+    });
+
+    updateRow('Rounds', r._row, {
+      status: 'PENDING', startedAt: '', finishedAt: '', pointsDone: 0, guardUserId: ''
+    });
+    reset++;
+  });
+
+  // 3) อัปเดตยอดจุดของรอบอิสระที่เพิ่งรับของย้ายมา
+  if (moved) {
+    SpreadsheetApp.flush();
+    var all = readTable('Checkins');
+    readTable('Rounds').forEach(function (r) {
+      if (String(r.mode || '').toUpperCase() !== 'FREE') return;
+      var n = all.filter(function (c) { return String(c.roundId) === String(r.roundId); }).length;
+      updateRow('Rounds', r._row, { pointsDone: n, pointsTotal: n });
+    });
+  }
+
+  return { renumbered: renum, roundsReset: reset, checkinsMoved: moved };
+}
+
 function tickRounds() {
+  try { runOneTimeFixes(); } catch (e) { /* งานซ่อมข้อมูลพลาดไม่ควรทำให้รอบค้าง */ }
+  try { runOneTimeFixes2(); } catch (e) { /* งานซ่อมกะค้างพลาดไม่ควรทำให้รอบค้าง */ }
+  try { sweepMidWindows();  } catch (e) { /* ปิดช่วงยืนยันพลาดไม่ควรทำให้รอบค้าง */ }
+
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return;
   try {
@@ -826,6 +959,8 @@ function apiBootstrap(me) {
   var workDate = workDateOf(new Date());
   if (!readTable('Rounds').some(function (r) { return dstr(r.workDate) === workDate; }))
     generateRounds(workDate);
+  // ไฟล์ทดสอบไม่มี trigger ของตัวเอง จึงเดินรอบให้ตอนเปิดแอปแทน
+  if (isTest()) { try { tickRounds(); } catch (e) {} }
 
   var cps = readTable('Checkpoints').filter(function (c) { return bool(c.active); })
     .sort(function (a, b) { return num(a.orderNo) - num(b.orderNo); })
@@ -849,13 +984,14 @@ function apiBootstrap(me) {
     });
 
   var allCk = readTable('Checkins');
-  var stMap = {};   // roundId -> { inAt, outAt } ของรอบประจำจุด
+  var stMap = {};   // roundId -> { inAt, midAt, outAt } ของรอบประจำจุด
   allCk.forEach(function (c) {
     var ph = String(c.phase || '').toUpperCase();
-    if (ph !== 'IN' && ph !== 'OUT') return;
+    if (ph !== 'IN' && ph !== 'OUT' && ph !== 'MID') return;
     var k = String(c.roundId);
-    if (!stMap[k]) stMap[k] = { inAt: '', outAt: '' };
+    if (!stMap[k]) stMap[k] = { inAt: '', midAt: '', outAt: '' };
     if (ph === 'IN'  && (!stMap[k].inAt  || String(c.ts) < stMap[k].inAt))  stMap[k].inAt  = String(c.ts);
+    if (ph === 'MID' && (!stMap[k].midAt || String(c.ts) < stMap[k].midAt)) stMap[k].midAt = String(c.ts);
     if (ph === 'OUT' && (!stMap[k].outAt || String(c.ts) < stMap[k].outAt)) stMap[k].outAt = String(c.ts);
   });
 
@@ -866,13 +1002,15 @@ function apiBootstrap(me) {
       return num(a.roundNo) - num(b.roundNo);
     })
     .map(function (r) {
-      var st = stMap[String(r.roundId)] || { inAt: '', outAt: '' };
+      var st = stMap[String(r.roundId)] || { inAt: '', midAt: '', outAt: '' };
       return { roundId: String(r.roundId), roundNo: num(r.roundNo), status: String(r.status),
                schedAt: String(r.schedAt), openAt: String(r.openAt), closeAt: String(r.closeAt),
                flex: bool(r.flex),
                mode: String(r.mode || 'PATROL').toUpperCase(),
                cpCodes: String(r.cpCodes || ''), minStayMin: num(r.minStayMin, 0),
-               inAt: st.inAt, outAt: st.outAt,
+               inAt: st.inAt, outAt: st.outAt, midAt: st.midAt,
+               midDueFrom: String(r.midDueFrom || ''), midDueTo: String(r.midDueTo || ''),
+               midResult: String(r.midResult || ''),
                pointsDone: num(r.pointsDone), pointsTotal: num(r.pointsTotal),
                guardUserId: String(r.guardUserId || '') };
     });
@@ -888,10 +1026,18 @@ function apiBootstrap(me) {
   allShifts.forEach(function (s) {
     if (String(s.guardUserId) === me.userId && s.checkInAt && !s.checkOutAt) {
       myOpenRow = s;
+      var _hm = 30;
+      seedShiftPlan().forEach(function (p) {
+        if (String(p.planId) === String(s.planId)) _hm = num(p.handoverMin, 30);
+      });
+      var _end = parseIso(s.plannedEnd).getTime();
       shift = { shiftId: String(s.shiftId), checkInAt: String(s.checkInAt),
                 planId: String(s.planId || ''), shiftName: String(s.shiftName || ''),
                 plannedStart: String(s.plannedStart || ''), plannedEnd: String(s.plannedEnd || ''),
-                lateMin: num(s.lateMin), onTime: !!String(s.onTime || '') };
+                lateMin: num(s.lateMin), onTime: !!String(s.onTime || ''),
+                contRound: contDepth(allShifts, s),
+                maxCont: num(cfgGet('MAX_CONT_SHIFT', 2), 2),
+                contOpenAt: isNaN(_end) ? '' : toIso(new Date(_end - _hm * 60000)) };
     }
   });
 
@@ -918,8 +1064,9 @@ function apiBootstrap(me) {
     serverTime: nowIso(), checkpoints: cps, checklist: items,
     profile: myProfile(me.userId),
     // ต่ออายุโทเคนทุกครั้งที่เปิดแอป — เซสชันจะไม่หมดอายุเองตราบใดที่ยังใช้งานอยู่
-    token: signToken({ userId: me.userId, name: me.name, role: me.role,
+    token: signToken({ userId: me.userId, name: me.name, role: me.role, test: !!me.test,
                        exp: toIso(new Date(Date.now() + CFG.TOKEN_TTL_DAYS * 86400000)) }),
+    test: isTest(),
     remindBeforeMin: num(cfgGet('REMIND_BEFORE_MIN', 10), 10),
     shiftPoint: (function () {
       var la = num(cfgGet('SHIFT_LAT', 0)), ln = num(cfgGet('SHIFT_LNG', 0));
@@ -963,6 +1110,12 @@ function apiCheckin(me, req) {
       return err('รอบที่ ' + num(round.roundNo) + ' ปิดไปแล้วเมื่อ ' +
                  fmt(parseIso(round.closeAt), 'HH:mm') + ' น. — บันทึกไม่ได้');
 
+    // ยังไม่ถึงเวลาเปิดรอบก็บันทึกไม่ได้ กันเดินรอบล่วงหน้าข้ามวัน
+    var openMs = parseIso(round.openAt).getTime();
+    if (!isFree && !isNaN(openMs) && atMs < openMs)
+      return err('รอบที่ ' + num(round.roundNo) + ' ยังไม่ถึงเวลา — เริ่มได้ตั้งแต่ ' +
+                 fmt(parseIso(round.openAt), 'HH:mm') + ' น.');
+
     var cp = null;
     readTable('Checkpoints').forEach(function (c) { if (String(c.cpId) === cpId) cp = c; });
     if (!cp) return err('ไม่พบจุดตรวจ');
@@ -979,16 +1132,30 @@ function apiCheckin(me, req) {
       if (allow.length && allow.indexOf(String(cp.code)) < 0)
         return err('รอบนี้เป็นรอบประจำจุด บันทึกได้เฉพาะจุด ' + allow.join(', '));
 
-      var inRow = null, outRow = null;
+      var inRow = null, outRow = null, midRow = null;
       mine.forEach(function (c) {
         var ph = String(c.phase || '').toUpperCase();
         if (ph === 'IN'  && (!inRow  || String(c.ts) < String(inRow.ts)))  inRow  = c;
         if (ph === 'OUT' && (!outRow || String(c.ts) < String(outRow.ts))) outRow = c;
+        if (ph === 'MID' && (!midRow || String(c.ts) < String(midRow.ts))) midRow = c;
       });
       if (outRow) return err('รอบนี้จบการประจำจุดไปแล้ว');
 
       if (!inRow) {
         phase = 'IN';
+      } else if (String(req.phase || '').toUpperCase() === 'MID') {
+        // ยืนยันกลางทาง — กดได้เฉพาะในช่วงเวลาที่ระบบสุ่มไว้ตอนกดเริ่ม
+        if (midRow)
+          return err('ยืนยันกลางทางไปแล้วเมื่อ ' + fmt(parseIso(midRow.ts), 'HH:mm') + ' น.');
+        var mFrom = parseIso(round.midDueFrom).getTime();
+        var mTo   = parseIso(round.midDueTo).getTime();
+        if (isNaN(mFrom) || isNaN(mTo)) return err('รอบนี้ไม่มีช่วงยืนยันกลางทาง');
+        if (atMs < mFrom)
+          return err('ยังไม่ถึงเวลายืนยัน — เริ่มได้ ' + fmt(new Date(mFrom), 'HH:mm') + ' น.');
+        if (atMs > mTo)
+          return err('เลยช่วงยืนยันแล้ว — ช่วงที่กำหนดคือ ' + fmt(new Date(mFrom), 'HH:mm') +
+                     '–' + fmt(new Date(mTo), 'HH:mm') + ' น.');
+        phase = 'MID';
       } else {
         phase = 'OUT';
         var need = num(round.minStayMin, 60);
@@ -1019,7 +1186,7 @@ function apiCheckin(me, req) {
     var checkinId = uid();
     appendRow('Checkins', {
       checkinId: checkinId, roundId: roundId, cpId: cpId, userId: me.userId, userName: me.name,
-      ts: nowIso(), clientTs: String(req.clientTs || ''), lat: lat, lng: lng,
+      ts: nowIso(), clientTs: localIso(req.clientTs), lat: lat, lng: lng,
       accuracyM: acc, distanceM: dist, verifyResult: verify,
       overrideReason: String(req.overrideReason || ''), ua: String(req.ua || '').substring(0, 200),
       phase: phase, note: String(req.note || '').substring(0, 200)
@@ -1041,9 +1208,26 @@ function apiCheckin(me, req) {
     });
 
     // อัปเดตสถานะรอบ
-    var done = readTable('Checkins').filter(function (c) { return String(c.roundId) === roundId; }).length;
+    var allNow = readTable('Checkins').filter(function (c) { return String(c.roundId) === roundId; });
+    // รอบประจำจุดนับเฉพาะเข้า/ออก การยืนยันกลางทางไม่ใช่จุดตรวจ จึงไม่นับรวม
+    var done = (mode === 'STATION')
+      ? allNow.filter(function (c) { return String(c.phase || '').toUpperCase() !== 'MID'; }).length
+      : allNow.length;
     var total = num(round.pointsTotal) || readTable('Checkpoints').filter(function (c) { return bool(c.active); }).length;
     var patch = { pointsDone: done, guardUserId: me.userId };
+
+    if (mode === 'STATION') {
+      if (phase === 'IN') {
+        var win = planMidWindow(round);
+        patch.midDueFrom = win ? win.from : '';
+        patch.midDueTo   = win ? win.to   : '';
+        patch.midResult  = win ? ''       : 'OFF';
+      } else if (phase === 'MID') {
+        patch.midResult = 'OK';
+      } else if (phase === 'OUT') {
+        if (round.midDueTo && !String(round.midResult || '')) patch.midResult = 'MISSED';
+      }
+    }
     if (isFree) {
       patch.status = 'OPEN';
       patch.pointsTotal = done;
@@ -1052,6 +1236,11 @@ function apiCheckin(me, req) {
       if (done >= total) { patch.status = 'COMPLETE'; patch.finishedAt = nowIso(); }
     }
     updateRow('Rounds', round._row, patch);
+
+    if (patch.midResult === 'MISSED')
+      notifySupervisor('⚠️ ' + me.name + ' ไม่ได้ยืนยันตำแหน่งกลางทาง รอบที่ ' + num(round.roundNo) +
+                       ' — ช่วงที่กำหนดคือ ' + fmt(parseIso(round.midDueFrom), 'HH:mm') + '–' +
+                       fmt(parseIso(round.midDueTo), 'HH:mm') + ' น.', 'MED');
 
     return ok({ checkinId: checkinId, verify: verify, distanceM: dist, phase: phase,
                 mode: isFree ? 'FREE' : mode, roundId: roundId,
@@ -1119,7 +1308,8 @@ function apiSupervisorBoard(me, req) {
                lat: num(c.lat), lng: num(c.lng), radiusM: num(c.radiusM, 25) };
     });
 
-  var shifts = readTable('Shifts').filter(function (s) { return dstr(s.workDate) === workDate; })
+  var allSh  = readTable('Shifts');
+  var shifts = allSh.filter(function (s) { return dstr(s.workDate) === workDate; })
     .map(function (s) {
       return { shiftId: String(s.shiftId), guardName: String(s.guardName || s.guardUserId),
                checkInAt: String(s.checkInAt), checkOutAt: String(s.checkOutAt || ''),
@@ -1129,6 +1319,7 @@ function apiSupervisorBoard(me, req) {
                lateMin: num(s.lateMin), onTime: String(s.onTime || ''),
                earlyOutMin: num(s.earlyOutMin),
                handoverId: String(s.handoverId || ''),
+               contRound: contDepth(allSh, s), contTo: String(s.contTo || ''),
                emergency: bool(s.emergency), emergencyReason: String(s.emergencyReason || '') };
     });
 
@@ -1161,6 +1352,8 @@ function apiSupervisorBoard(me, req) {
                flex: bool(r.flex),
                mode: String(r.mode || 'PATROL').toUpperCase(),
                cpCodes: String(r.cpCodes || ''), minStayMin: num(r.minStayMin),
+               midDueFrom: String(r.midDueFrom || ''), midDueTo: String(r.midDueTo || ''),
+               midResult: String(r.midResult || ''),
                startedAt: String(r.startedAt || ''), finishedAt: String(r.finishedAt || ''),
                pointsDone: num(r.pointsDone), pointsTotal: num(r.pointsTotal) };
     }),
@@ -1472,6 +1665,7 @@ function apiLockMonth(me, req) {
 // API — ผู้ดูแล
 // ===========================================================================
 function apiAdminData(me) {
+  seedStationMidCfg();
   return ok({
     user: { userId: me.userId, name: me.name, role: me.role },
     checkpoints: readTable('Checkpoints').map(cleanRow),
@@ -1601,13 +1795,28 @@ function apiSaveHoliday(me, req) {
   return ok({ item: rec });
 }
 
+/** บันทึกค่าระบบ — รับได้ทั้งค่าเดียวและหลายค่าในครั้งเดียว (req.items) */
 function apiSaveConfig(me, req) {
-  var found = null;
-  readTable('Config').forEach(function (r) { if (String(r.key) === String(req.key)) found = r; });
-  if (found) updateRow('Config', found._row, { value: req.value });
-  else appendRow('Config', { key: String(req.key), value: req.value, note: String(req.note || '') });
-  audit(me.userId, 'CONFIG_SAVE', 'CONFIG', String(req.key), null, { value: req.value });
-  return ok({});
+  var items = (req.items && req.items.length)
+    ? req.items
+    : [{ key: req.key, value: req.value, note: req.note }];
+
+  var lock = LockService.getScriptLock();
+  lock.tryLock(20000);
+  try {
+    var byKey = {};
+    readTable('Config').forEach(function (r) { byKey[String(r.key)] = r; });
+
+    items.forEach(function (it) {
+      var k = String((it && it.key) || '').trim();
+      if (!k) return;
+      if (byKey[k]) updateRow('Config', byKey[k]._row, { value: it.value });
+      else          appendRow('Config', { key: k, value: it.value, note: String(it.note || '') });
+      audit(me.userId, 'CONFIG_SAVE', 'CONFIG', k, null, { value: it.value });
+    });
+  } finally { try { lock.releaseLock(); } catch (e) {} }
+
+  return ok({ saved: items.length });
 }
 
 function apiUploadRefPhoto(me, req) {
@@ -1623,7 +1832,8 @@ function apiUploadRefPhoto(me, req) {
 // ===========================================================================
 function driveFolder() {
   var d = new Date();
-  var path = [CFG.DRIVE_ROOT, fmt(d, 'yyyy'), fmt(d, 'MM'), fmt(d, 'dd')];
+  var root = CFG.DRIVE_ROOT + (isTest() ? '_TEST' : '');
+  var path = [root, fmt(d, 'yyyy'), fmt(d, 'MM'), fmt(d, 'dd')];
   var parent = DriveApp.getRootFolder();
   for (var i = 0; i < path.length; i++) {
     var it = parent.getFoldersByName(path[i]);
@@ -1743,6 +1953,7 @@ function webexTargets(audience) {
  * audience: 'GUARD' (รปภ.) หรือ 'SUPERVISOR' (หัวหน้าเวร)
  */
 function notify(text, severity, type, refId, audience) {
+  if (isTest()) return false;   // บัญชีทดสอบไม่ส่งข้อความออกไปที่ห้องแชทจริง
   var ch = String(cfgGet('NOTIFY_CHANNEL', 'WEBEX')).toUpperCase();
   if (ch === 'OFF') return false;
   var sup = (audience === 'SUPERVISOR');
@@ -2241,7 +2452,7 @@ function rebuildPoints() {
       var bonus = (String(r.status) === 'COMPLETE') ? ptCfg('ROUND') : 0;
       if (bonus) {
         s.roundsDone++;
-        if (String(r.mode || '').toUpperCase() === 'STATION') bonus += ptCfg('STATION');
+        if (String(r.mode || '').toUpperCase() === 'STATION' && midOk(r)) bonus += ptCfg('STATION');
       }
       var night = isNightRound(r);
       if (night) s.nightRounds++;
@@ -2495,7 +2706,7 @@ function dayPointsLive(userId, workDate, prevStreak, ovBefore, ctx) {
     var bonus = (String(r.status) === 'COMPLETE') ? ptCfg('ROUND') : 0;
     if (bonus) {
       s.roundsDone++;
-      if (String(r.mode || '').toUpperCase() === 'STATION') bonus += ptCfg('STATION');
+      if (String(r.mode || '').toUpperCase() === 'STATION' && midOk(r)) bonus += ptCfg('STATION');
     }
     s.cpPts    += base;
     s.roundPts += bonus;
@@ -2617,11 +2828,12 @@ function pointsRowsOf(userId) {
   var workDate = workDateOf(new Date());
   var mk = monthOf(workDate);
   var all = readTable('Points');
+  var gid = patrolGuardIds();   // แต้มทีมนับเฉพาะ รปภ. ไม่รวมแอดมินหรือหัวหน้าเวร
 
   var mine = [], teamMonth = 0, prevStreak = 0, prevDate = '', ovBefore = 0;
   all.forEach(function (r) {
     var wd = dstr(r.workDate);
-    if (monthOf(wd) === mk && wd !== workDate) teamMonth += num(r.total);
+    if (monthOf(wd) === mk && wd !== workDate && gid[String(r.userId)]) teamMonth += num(r.total);
     if (String(r.userId) !== userId) return;
     if (wd === workDate) return;
     mine.push(r);
@@ -2939,6 +3151,18 @@ function pickShift(opts, atMs) {
   return best;
 }
 
+/** userId ของ รปภ. เดินตรวจจริง — กันบัญชี VIP / แอดมิน / หัวหน้าเวร หลุดเข้าระบบเวร */
+function patrolGuardIds() {
+  var out = {};
+  readPlatform('Members').forEach(function (r) {
+    var role = String(pick(r, ['Role', 'Level', 'ระดับ', 'ตำแหน่งในระบบ'])).trim().toUpperCase();
+    if (role.indexOf('GUARD') < 0 && role.indexOf('รปภ') < 0) return;
+    var id = String(pick(r, ['UserId', 'Username', 'Phone', 'เบอร์โทร', 'Email']) || '').trim();
+    if (id) out[id] = true;
+  });
+  return out;
+}
+
 function openShiftsNow() {
   return readTable('Shifts').filter(function (s) {
     return s.checkInAt && !s.checkOutAt;
@@ -2987,7 +3211,10 @@ function apiShiftIn(me, req) {
   audit(me.userId, 'SHIFT_IN', 'SHIFT', id, null, { plan: plan ? plan.name : '', lateMin: lateMin });
 
   // รับเวรต่อจากคนที่ยังไม่ออก — ให้ฝั่งแอปรู้ว่ามีใครรออยู่
-  var waiting = openShiftsNow().filter(function (s) { return String(s.guardUserId) !== me.userId; })
+  var guardIds = patrolGuardIds();
+  var waiting = openShiftsNow().filter(function (s) {
+      return String(s.guardUserId) !== me.userId && guardIds[String(s.guardUserId)];
+    })
     .map(function (s) { return String(s.guardName || s.guardUserId); });
 
   if (!onTime)
@@ -3023,10 +3250,12 @@ function apiShiftOut(me, req) {
     if (String(p.planId) === String(mine.planId)) needHo = bool(p.requireHandover);
   });
 
+  var guardIds = patrolGuardIds();
   var taker = null;
   rows.forEach(function (s) {
     if (String(s.guardUserId) === me.userId) return;
     if (!s.checkInAt || s.checkOutAt) return;
+    if (!guardIds[String(s.guardUserId)]) return;   // ข้ามบัญชี VIP / แอดมิน / หัวหน้าเวร
     if (!taker || String(s.checkInAt) > String(taker.checkInAt)) taker = s;
   });
 
@@ -3146,4 +3375,533 @@ function freeRoundOf(workDate) {
   var out = null;
   readTable('Rounds').forEach(function (r) { if (String(r.roundId) === id) out = r; });
   return out;
+}
+
+
+// ===========================================================================
+// งานซ่อมข้อมูลรอบที่ 2 — 22 ก.ย. 2569
+//   1) ปิดกะที่ค้างเปิดข้ามวัน 2 แถว
+//   2) แก้ผู้รับเวรเช้า 22 ก.ย. ที่เลือกผิดเป็นบัญชี VIP
+//   3) ตั้งตารางกะใหม่เป็นผลัด 24 ชั่วโมง 07:00 ถึง 07:00 วันถัดไป
+// ทำอัตโนมัติครั้งเดียวจาก tickRounds แล้วจำไว้ใน Config: FIX2_VER
+// ===========================================================================
+var FIX2_VER = 1;
+
+function runOneTimeFixes2() {
+  if (num(cfgGet('FIX2_VER', 0)) >= FIX2_VER) return;
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return;
+  try {
+    if (num(cfgGet('FIX2_VER', 0)) >= FIX2_VER) return;   // กันชนกันสองรอบ
+    var log = fixStaleShifts();
+    cfgSet('FIX2_VER', FIX2_VER, 'รุ่นของงานซ่อมกะค้าง — ห้ามแก้');
+    audit('system', 'ONE_TIME_FIX', 'SHIFTS', 'FIX2_' + FIX2_VER, null, log);
+  } finally { lock.releaseLock(); }
+}
+
+/** ปิดกะที่ค้างเปิด แก้ผู้รับเวรที่เลือกผิด แล้วเปลี่ยนตารางกะเป็นผลัด 24 ชั่วโมง */
+function fixStaleShifts() {
+  var out = { shiftsClosed: [], handoverFixed: '', shiftPlan: '' };
+
+  // 1) ปิดกะที่ค้างเปิดข้ามวัน
+  var close = {};
+  close['3e797737'] = { at: '2026-09-21T06:28:00+07:00',
+                        note: 'ปิดย้อนหลัง — ลืมกดออกเวรตอนส่งเวรให้ศักดิ์นรินทร์' };
+  close['ec23000f'] = { at: '2026-09-21T18:00:00+07:00',
+                        note: 'ปิดย้อนหลัง — บัญชี VIP ไม่ใช่เวรจริง' };
+  readTable('Shifts').forEach(function (s) {
+    var f = close[String(s.shiftId)];
+    if (!f || s.checkOutAt) return;
+    updateRow('Shifts', s._row, { checkOutAt: f.at, status: 'CLOSED', note: f.note });
+    out.shiftsClosed.push(String(s.shiftId));
+  });
+
+  // 2) การส่งเวรเช้า 22 ก.ย. ผู้รับที่ถูกคือ ธีรพงศ์ ไม่ใช่บัญชี VIP
+  readTable('Handovers').forEach(function (h) {
+    if (String(h.hoId) !== 'f68c45ac' || String(h.inUserId) !== 'VIP') return;
+    updateRow('Handovers', h._row, {
+      inUserId: 'guard02',
+      inName: 'ธีรพงศ์ เอียดอ่อน',
+      note: 'แก้ย้อนหลัง — เดิมเลือกผิดเป็นบัญชี VIP'
+    });
+    out.handoverFixed = 'f68c45ac';
+  });
+
+  // 3) ตารางกะจริงคือผลัด 24 ชั่วโมง 07:00 ถึง 07:00 วันถัดไป
+  var has24 = false;
+  readTable('ShiftPlan').forEach(function (p) {
+    if (String(p.name).indexOf('24') >= 0) has24 = true;
+  });
+  if (!has24) {
+    appendRow('ShiftPlan', {
+      planId: uid(), name: 'กะ 24 ชั่วโมง', startTime: '07:00', endTime: '07:00',
+      graceEarlyMin: 30, lateAfterMin: 15, handoverMin: 30,
+      requireHandover: 'TRUE', active: 'TRUE',
+      note: 'เวรผลัด 24 ชม. สลับวัน 07:00 ถึง 07:00 วันถัดไป'
+    });
+    SpreadsheetApp.flush();
+    readTable('ShiftPlan').forEach(function (p) {
+      var n = String(p.name);
+      if (n === 'กะกลางวัน' || n === 'กะกลางคืน')
+        updateRow('ShiftPlan', p._row, { active: 'FALSE' });
+    });
+    out.shiftPlan = 'ตั้งกะ 24 ชั่วโมงแล้ว ปิดกะกลางวัน/กลางคืน';
+  }
+
+  Logger.log(JSON.stringify(out, null, 2));
+  return out;
+}
+
+
+// ===========================================================================
+// ยืนยันตำแหน่งกลางทาง ของรอบประจำจุด
+//   กันยามกดเริ่มแล้วเดินออกนอกพื้นที่ โดยไม่ต้องให้เปิดหน้าจอทิ้งไว้
+//   ตอนกดเริ่ม ระบบสุ่มช่วงเวลากว้าง STATION_MID_WINDOW_MIN นาที แล้วบอกยามทันที
+//   ยามกลับมาเปิดแอปแตะยืนยันในช่วงนั้น ใช้เวลาไม่กี่วินาที
+// ===========================================================================
+
+/** ใส่ค่าตั้งต้นลง Config ครั้งแรก — เริ่มที่ 0 คือยังปิดไว้ รอหน้าแอปพร้อมก่อน */
+function seedStationMidCfg() {
+  var have = {};
+  readTable('Config').forEach(function (r) { have[String(r.key)] = true; });
+  [
+    ['STATION_MID_COUNT', 0,
+     'ยืนยันกลางทางรอบประจำจุดกี่ครั้ง — 0 = ปิดฟีเจอร์ / 1 = ปกติ / 2 = เข้ม'],
+    ['STATION_MID_WINDOW_MIN', 10, 'ช่วงเวลาให้กดยืนยัน กว้างกี่นาที'],
+    ['STATION_MID_FROM_PCT', 30, 'สุ่มช่วงยืนยันได้เร็วสุดที่กี่ % ของเวลาประจำจุด'],
+    ['STATION_MID_TO_PCT', 75, 'สุ่มช่วงยืนยันได้ช้าสุดที่กี่ % ของเวลาประจำจุด'],
+    ['STATION_MID_ENFORCE', 'FALSE',
+     'TRUE = ขาดการยืนยันแล้วตัดโบนัสประจำจุด / FALSE = บันทึกอย่างเดียว ยังไม่ตัดแต้ม'],
+    ['MAX_CONT_SHIFT', 2,
+     'ควงกะได้สูงสุดกี่ผลัดติดกัน — 2 = ควงได้ 1 ครั้ง รวม 48 ชม. / 3 = 72 ชม.']
+  ].forEach(function (w) { if (!have[w[0]]) cfgSet(w[0], w[1], w[2]); });
+}
+
+/** สุ่มช่วงเวลายืนยันกลางทางของรอบหนึ่ง — คืน null เมื่อปิดฟีเจอร์ */
+function planMidWindow(round) {
+  seedStationMidCfg();
+  if (num(cfgGet('STATION_MID_COUNT', 0), 0) < 1) return null;
+
+  var stay = num(round.minStayMin, 60);
+  var win  = Math.max(3, num(cfgGet('STATION_MID_WINDOW_MIN', 10), 10));
+  var lo   = Math.round(stay * num(cfgGet('STATION_MID_FROM_PCT', 30), 30) / 100);
+  var hi   = Math.round(stay * num(cfgGet('STATION_MID_TO_PCT', 75), 75) / 100);
+  if (hi - win < lo) hi = lo + win;              // กันช่วงสุ่มแคบเกินจนคำนวณไม่ได้
+  if (hi > stay - 2) { hi = Math.max(lo + win, stay - 2); }
+
+  var span  = Math.max(0, (hi - win) - lo);
+  var start = lo + Math.floor(Math.random() * (span + 1));
+  var base  = Date.now();
+
+  return { from: toIso(new Date(base + start * 60000)),
+           to:   toIso(new Date(base + (start + win) * 60000)) };
+}
+
+var _MID_ENFORCE = null;
+/** รอบนี้ควรได้โบนัสประจำจุดหรือไม่ — ขาดการยืนยันถึงจะตัด ก็ต่อเมื่อเปิดโหมดบังคับ */
+function midOk(round) {
+  if (String(round.midResult || '') !== 'MISSED') return true;
+  if (_MID_ENFORCE === null) _MID_ENFORCE = bool(cfgGet('STATION_MID_ENFORCE', 'FALSE'));
+  return !_MID_ENFORCE;
+}
+
+/** ปิดช่วงยืนยันที่หมดเวลาแล้ว — เรียกจาก tickRounds ทุก 15 นาที */
+function sweepMidWindows() {
+  var today = workDateOf(new Date()), now = Date.now();
+  var due = readTable('Rounds').filter(function (r) {
+    return dstr(r.workDate) === today &&
+           String(r.mode || '').toUpperCase() === 'STATION' &&
+           r.midDueTo && !String(r.midResult || '');
+  });
+  if (!due.length) return 0;
+
+  var ck = readTable('Checkins'), n = 0;
+  due.forEach(function (r) {
+    var t = parseIso(r.midDueTo).getTime();
+    if (isNaN(t) || now <= t) return;
+    var hit = ck.some(function (c) {
+      return String(c.roundId) === String(r.roundId) &&
+             String(c.phase || '').toUpperCase() === 'MID';
+    });
+    updateRow('Rounds', r._row, { midResult: hit ? 'OK' : 'MISSED' });
+    n++;
+    if (!hit)
+      notifySupervisor('⚠️ รอบประจำจุดที่ ' + num(r.roundNo) + ' ไม่มีการยืนยันตำแหน่งกลางทาง — ' +
+                       'ช่วงที่กำหนดคือ ' + fmt(parseIso(r.midDueFrom), 'HH:mm') + '–' +
+                       fmt(parseIso(r.midDueTo), 'HH:mm') + ' น.', 'MED');
+  });
+  return n;
+}
+
+
+// ===========================================================================
+// ควงกะ — ยามคนเดิมทำต่ออีกผลัดโดยไม่มีคนมารับเวร
+//   กดครั้งเดียว ปิดกะเดิมและเปิดกะใหม่ของวันทำงานถัดไปในวินาทีเดียวกัน
+//   จะได้ไม่ต้องใช้ปุ่มออกเวรฉุกเฉิน ซึ่งหมายถึงสำนักงานไม่มีคนเฝ้า
+// ===========================================================================
+
+/** กะนี้เป็นผลัดที่เท่าไหร่ของสายโซ่การควงกะ — กะปกติคือ 1 */
+function contDepth(shifts, row) {
+  if (!row) return 1;
+  var byId = {};
+  shifts.forEach(function (s) { byId[String(s.shiftId)] = s; });
+  var n = 1, cur = row, guard = 0;
+  while (cur && cur.contFrom && byId[String(cur.contFrom)] && guard++ < 20) {
+    n++;
+    cur = byId[String(cur.contFrom)];
+  }
+  return n;
+}
+
+function apiShiftCont(me, req) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return err('ระบบกำลังทำงานอื่นอยู่ ลองใหม่อีกครั้ง');
+  try {
+    var rows = readTable('Shifts'), mine = null;
+    for (var i = 0; i < rows.length; i++)
+      if (String(rows[i].guardUserId) === me.userId && !rows[i].checkOutAt) { mine = rows[i]; break; }
+    if (!mine) return err('ไม่พบเวรที่เปิดอยู่');
+
+    // ถ้ามี รปภ. คนอื่นเข้าเวรแล้ว ให้ส่งเวรตามปกติ ไม่ใช่ควงกะ
+    var guards = patrolGuardIds(), waiting = null;
+    openShiftsNow().forEach(function (s) {
+      if (String(s.guardUserId) === me.userId) return;
+      if (!guards[String(s.guardUserId)]) return;
+      if (!waiting) waiting = s;
+    });
+    if (waiting)
+      return err(String(waiting.guardName || 'คนกะถัดไป') + ' เข้าเวรแล้ว — ใช้ปุ่มส่งเวรตามปกติ');
+
+    var now = new Date(), nowMs = now.getTime();
+    var endMs = parseIso(mine.plannedEnd).getTime();
+    var hm = 30;
+    seedShiftPlan().forEach(function (p) {
+      if (String(p.planId) === String(mine.planId)) hm = num(p.handoverMin, 30);
+    });
+    if (!isNaN(endMs) && nowMs < endMs - hm * 60000)
+      return err('ยังไม่ถึงเวลาควงกะ — กดได้ตั้งแต่ ' +
+                 fmt(new Date(endMs - hm * 60000), 'HH:mm') + ' น.');
+
+    var newWd = workDateOf(now);
+    if (newWd === dstr(mine.workDate))
+      return err('ยังอยู่ในวันทำงานเดิม — ควงกะได้เมื่อขึ้นวันทำงานใหม่แล้ว');
+
+    var maxN  = num(cfgGet('MAX_CONT_SHIFT', 2), 2);
+    var depth = contDepth(rows, mine);
+    if (depth >= maxN)
+      return err('ทำเวรต่อเนื่องครบ ' + maxN + ' ผลัดแล้ว — ต้องมีคนมารับเวร');
+
+    var chk = shiftPointCheck(num(req.lat), num(req.lng));
+    if (chk && !chk.inside && !req.overrideReason)
+      return err('อยู่นอกจุดลงเวลา ' + (chk.dist < 0 ? '(อ่านพิกัดไม่ได้)' : chk.dist + ' ม.') +
+                 ' — รัศมีที่กำหนด ' + chk.radiusM + ' ม.');
+
+    // กะใหม่ของวันทำงานถัดไป — ใช้แผนกะเดิมถ้ายังเปิดใช้งานอยู่
+    var opts = shiftOptions(newWd), np = null;
+    opts.forEach(function (o) { if (o.planId === String(mine.planId)) np = o; });
+    if (!np) np = pickShift(opts, nowMs);
+
+    var lateMin = 0, onTime = 'TRUE';
+    if (np) {
+      lateMin = Math.max(0, Math.round((nowMs - parseIso(np.startAt).getTime()) / 60000));
+      onTime  = (lateMin <= np.lateAfterMin) ? 'TRUE' : '';
+    }
+
+    var newId = uid(), hoId = uid(), ts = nowIso();
+
+    appendRow('Handovers', {
+      hoId: hoId, workDate: dstr(mine.workDate), ts: ts,
+      outUserId: me.userId, outName: me.name,
+      inUserId: me.userId, inName: me.name,
+      note: 'ควงกะ — ผู้ปฏิบัติงานคนเดิมทำต่อเป็นผลัดที่ ' + (depth + 1),
+      ackAt: ts, status: 'DONE'
+    });
+
+    var earlyOut = (!isNaN(endMs)) ? Math.max(0, Math.round((endMs - nowMs) / 60000)) : 0;
+    var oldNote  = String(mine.note || ''), addNote = shiftNote('ควงกะต่อ', chk, req);
+    updateRow('Shifts', mine._row, {
+      checkOutAt: ts, checkOutLat: num(req.lat), checkOutLng: num(req.lng), status: 'CLOSED',
+      note: (oldNote && addNote) ? (oldNote + ' | ' + addNote) : (oldNote || addNote),
+      earlyOutMin: earlyOut, handoverId: hoId, contTo: newId
+    });
+
+    appendRow('Shifts', {
+      shiftId: newId, workDate: newWd, guardUserId: me.userId, guardName: me.name,
+      checkInAt: ts, checkInLat: num(req.lat), checkInLng: num(req.lng),
+      checkOutAt: '', checkOutLat: '', checkOutLng: '', status: 'OPEN',
+      note: 'ควงกะต่อจากผลัดก่อนหน้า',
+      planId: np ? np.planId : String(mine.planId || ''),
+      shiftName: np ? np.name : String(mine.shiftName || ''),
+      plannedStart: np ? np.startAt : '', plannedEnd: np ? np.endAt : '',
+      lateMin: lateMin, onTime: onTime, earlyOutMin: '',
+      handoverId: hoId, emergency: '', emergencyReason: '',
+      contFrom: String(mine.shiftId), contTo: ''
+    });
+
+    audit(me.userId, 'SHIFT_CONT', 'SHIFT', newId,
+          { from: String(mine.shiftId) }, { round: depth + 1, max: maxN });
+
+    notifySupervisor('🔁 ' + me.name + ' ควงกะต่อเป็นผลัดที่ ' + (depth + 1) +
+                     ' ติดต่อกัน — ครบกำหนดใหม่ ' +
+                     (np ? fmt(parseIso(np.endAt), 'd/M HH:mm') : '-') + ' น.', 'MED');
+
+    return ok({ shiftId: newId, contRound: depth + 1, maxCont: maxN,
+                plannedEnd: np ? np.endAt : '', lateMin: lateMin });
+  } finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+
+// ===========================================================================
+// เครื่องมือจัดการไฟล์ฐานข้อมูลทดสอบ — รันจากหน้าแก้ไขสคริปต์เท่านั้น
+//   setupTestDb()   เตรียมไฟล์ทดสอบให้พร้อมใช้ + เพิ่มบัญชี vip01 vip02
+//   resetTestData() ล้างข้อมูลในไฟล์ทดสอบให้เกลี้ยง เรียกซ้ำได้ตลอด
+// ทั้งสองฟังก์ชันเปิดไฟล์ตรงด้วย ID ไม่ผ่าน db() จึงไม่ปนกับไฟล์จริงแน่นอน
+// ===========================================================================
+
+var TEST_DATA_TABS = ['Rounds', 'Checkins', 'CheckinAnswers', 'Shifts', 'Handovers',
+                      'Points', 'Adjustments', 'Incidents', 'Redemptions',
+                      'Notifications', 'Attachments', 'Inspections', 'AuditLog'];
+
+function resetTestData() {
+  if (!CFG.TEST_DB_SHEET_ID) throw new Error('ยังไม่ได้ตั้ง CFG.TEST_DB_SHEET_ID');
+  if (CFG.TEST_DB_SHEET_ID === CFG.DB_SHEET_ID)
+    throw new Error('ID ไฟล์ทดสอบซ้ำกับไฟล์จริง — หยุดไว้ก่อนเพื่อความปลอดภัย');
+
+  var ss = SpreadsheetApp.openById(CFG.TEST_DB_SHEET_ID);
+  var log = {};
+  TEST_DATA_TABS.forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    var last = sh.getLastRow();
+    if (last > 1) { sh.deleteRows(2, last - 1); log[name] = (last - 1) + ' แถว'; }
+  });
+  SpreadsheetApp.flush();
+  Logger.log('ล้างข้อมูลทดสอบแล้ว: ' + JSON.stringify(log, null, 2));
+  return log;
+}
+
+function setupTestDb() {
+  var out = { cleared: null, tuned: [], members: [] };
+  out.cleared = resetTestData();
+
+  var ts = SpreadsheetApp.openById(CFG.TEST_DB_SHEET_ID);
+
+  // 1) ผ่อนรัศมีจุดตรวจในไฟล์ทดสอบ ให้นั่งทดสอบที่โต๊ะทำงานได้
+  var cp = ts.getSheetByName('Checkpoints');
+  if (cp && cp.getLastRow() > 1) {
+    var ch = cp.getRange(1, 1, 1, cp.getLastColumn()).getValues()[0]
+               .map(function (x) { return String(x).trim(); });
+    var ci = ch.indexOf('radiusM');
+    if (ci >= 0) {
+      var n = cp.getLastRow() - 1;
+      cp.getRange(2, ci + 1, n, 1).setValues((function () {
+        var a = []; for (var i = 0; i < n; i++) a.push([3000]); return a;
+      })());
+      out.tuned.push('Checkpoints.radiusM = 3000 (' + n + ' จุด)');
+    }
+  }
+
+  // 2) ย่อเวลาประจำจุดเหลือ 2 นาที ทดสอบครบวงจรได้ในไม่กี่นาที
+  var rp = ts.getSheetByName('RoundPlan');
+  if (rp && rp.getLastRow() > 1) {
+    var rh = rp.getRange(1, 1, 1, rp.getLastColumn()).getValues()[0]
+               .map(function (x) { return String(x).trim(); });
+    var mi = rh.indexOf('minStayMin'), mo = rh.indexOf('mode');
+    if (mi >= 0 && mo >= 0) {
+      var rows = rp.getRange(2, 1, rp.getLastRow() - 1, rp.getLastColumn()).getValues();
+      var hit = 0;
+      for (var r = 0; r < rows.length; r++) {
+        if (String(rows[r][mo]).toUpperCase() === 'STATION') {
+          rp.getRange(r + 2, mi + 1).setValue(2); hit++;
+        }
+      }
+      if (hit) out.tuned.push('RoundPlan.minStayMin = 2 (' + hit + ' รอบประจำจุด)');
+    }
+  }
+
+  // 3) ย่อช่วงยืนยันกลางทางให้สั้นลง แล้วเปิดใช้งานในไฟล์ทดสอบ
+  var cf = ts.getSheetByName('Config');
+  if (cf && cf.getLastRow() > 1) {
+    var want = { STATION_MID_COUNT: 1, STATION_MID_WINDOW_MIN: 1,
+                 STATION_MID_FROM_PCT: 20, STATION_MID_TO_PCT: 60 };
+    var vals = cf.getRange(2, 1, cf.getLastRow() - 1, 2).getValues();
+    for (var i = 0; i < vals.length; i++) {
+      var k = String(vals[i][0]).trim();
+      if (want[k] !== undefined) {
+        cf.getRange(i + 2, 2).setValue(want[k]);
+        out.tuned.push('Config.' + k + ' = ' + want[k]);
+      }
+    }
+  }
+
+  // 4) เพิ่มบัญชีทดสอบลงแท็บ Members ของ "ไฟล์จริง" — ไม่ใส่รหัสผ่าน ต้องกรอกเอง
+  var ps = SpreadsheetApp.openById(CFG.PLATFORM_SHEET_ID || CFG.DB_SHEET_ID);
+  var ms = ps.getSheetByName('Members');
+  if (ms) {
+    var w  = Math.max(ms.getLastColumn(), 1);
+    var mh = ms.getRange(1, 1, 1, w).getValues()[0].map(function (x) { return String(x).trim(); });
+    if (mh.indexOf('Test') < 0) {
+      ms.getRange(1, w + 1).setValue('Test');
+      mh.push('Test'); w++;
+      out.members.push('เพิ่มคอลัมน์ Test');
+    }
+    var have = {};
+    if (ms.getLastRow() > 1)
+      ms.getRange(2, 1, ms.getLastRow() - 1, w).getValues().forEach(function (r) {
+        have[String(r[mh.indexOf('UserId')]).trim()] = true;
+      });
+
+    [['vip01', 'ทดสอบระบบ 1'], ['vip02', 'ทดสอบระบบ 2']].forEach(function (u) {
+      if (have[u[0]]) { out.members.push(u[0] + ' มีอยู่แล้ว'); return; }
+      var row = {};
+      row['UserId']   = u[0];
+      row['Name']     = u[1];
+      row['Role']     = 'GUARD';
+      row['Status']   = 'Activated';
+      row['Apps']     = CFG.APP_CODE;
+      row['Position'] = 'บัญชีทดสอบระบบ';
+      row['Note']     = 'บัญชีทดสอบ — ข้อมูลลงไฟล์ OfficeLove_DB_TEST / ยังไม่มีรหัสผ่าน ต้องกรอกเอง';
+      row['Test']     = 'TRUE';
+      ms.appendRow(mh.map(function (h) { return row[h] === undefined ? '' : row[h]; }));
+      out.members.push(u[0] + ' เพิ่มแล้ว (ยังไม่มีรหัสผ่าน)');
+    });
+  }
+
+  SpreadsheetApp.flush();
+  Logger.log(JSON.stringify(out, null, 2));
+  return out;
+}
+
+
+// ===========================================================================
+// ภาพรวมสำหรับผู้ดูแลระบบ — สรุปจากตารางที่มีอยู่ ไม่เพิ่มตารางใหม่
+// ===========================================================================
+function apiOwnerOverview(me) {
+  var workDate = workDateOf(new Date());
+
+  // ── เข้าใช้ล่าสุดของแต่ละคน จาก AuditLog
+  var au = readTable('AuditLog');
+  var lastLogin = {};
+  au.forEach(function (a) {
+    if (String(a.action) !== 'LOGIN') return;
+    var u = String(a.userId), ts = String(a.ts);
+    if (!lastLogin[u] || ts > lastLogin[u]) lastLogin[u] = ts;
+  });
+
+  // ── ใครอยู่ระหว่างเวรตอนนี้
+  var allSh = readTable('Shifts'), onDuty = {};
+  allSh.forEach(function (s) {
+    if (s.checkInAt && !s.checkOutAt) onDuty[String(s.guardUserId)] = String(s.checkInAt);
+  });
+
+  // ── รายชื่อผู้ใช้ — อ่านเฉพาะคอลัมน์ที่ต้องใช้ ไม่แตะช่องรหัสผ่าน
+  var users = [];
+  [['Admins', 'ADMIN'], ['Members', 'GUARD']].forEach(function (set) {
+    readPlatform(set[0]).forEach(function (r) {
+      var id = String(pick(r, ['UserId', 'Username', 'Phone', 'เบอร์โทร', 'Email']) || '').trim();
+      if (!id) return;
+      var lvl  = String(pick(r, ['Role', 'Level', 'ระดับ', 'ตำแหน่งในระบบ'])).trim().toUpperCase();
+      var role = set[1];
+      if (lvl.indexOf('ADMIN') >= 0)                                  role = 'ADMIN';
+      else if (lvl.indexOf('SUPER') >= 0 || lvl.indexOf('หัวหน้า') >= 0) role = 'SUPERVISOR';
+      else if (set[0] === 'Admins')                                   role = 'ADMIN';
+
+      var st  = String(pick(r, ['Status', 'สถานะ', 'Active']) || '').trim();
+      var app = String(pick(r, ['Apps', 'App', 'สิทธิ์แอป']) || '').toUpperCase();
+      users.push({
+        userId: id,
+        name: String(pick(r, ['Name', 'ชื่อ-สกุล', 'ชื่อ', 'FullName']) || id),
+        role: role, roleRaw: lvl,
+        position: String(pick(r, ['Position', 'ตำแหน่ง']) || ''),
+        active: (!st || ['INACTIVE','DISABLED','ปิด','ระงับ','FALSE','0'].indexOf(st.toUpperCase()) < 0)
+                && (!app || app.indexOf(CFG.APP_CODE) >= 0),
+        test: bool(pick(r, ['Test', 'TEST', 'Testing', 'บัญชีทดสอบ', 'ทดสอบ'])),
+        lastLogin: lastLogin[id] || '',
+        onDutySince: onDuty[id] || ''
+      });
+    });
+  });
+  users.sort(function (a, b) {
+    var o = { ADMIN: 0, SUPERVISOR: 1, GUARD: 2 };
+    if (o[a.role] !== o[b.role]) return o[a.role] - o[b.role];
+    return String(a.name) < String(b.name) ? -1 : 1;
+  });
+
+  // ── สถานะของวันนี้
+  var n = { total: 0, ok: 0, run: 0, wait: 0, bad: 0, station: 0, midMissed: 0 };
+  readTable('Rounds').forEach(function (r) {
+    if (dstr(r.workDate) !== workDate) return;
+    if (String(r.mode || '').toUpperCase() === 'FREE') return;
+    n.total++;
+    var s = String(r.status);
+    if (s === 'COMPLETE')                          n.ok++;
+    else if (s === 'IN_PROGRESS')                  n.run++;
+    else if (s === 'MISSED' || s === 'PARTIAL')    n.bad++;
+    else                                           n.wait++;
+    if (String(r.mode || '').toUpperCase() === 'STATION') {
+      n.station++;
+      if (String(r.midResult || '') === 'MISSED') n.midMissed++;
+    }
+  });
+
+  var ck = 0;
+  readTable('Checkins').forEach(function (c) {
+    if (String(c.ts).substring(0, 10) === workDate) ck++;
+  });
+
+  var hoPending = 0;
+  readTable('Handovers').forEach(function (h) { if (!h.ackAt) hoPending++; });
+
+  var incOpen = 0;
+  readTable('Incidents').forEach(function (i) {
+    if (String(i.status || 'OPEN').toUpperCase() !== 'CLOSED') incOpen++;
+  });
+
+  var rdPending = 0;
+  readTable('Redemptions').forEach(function (r) {
+    if (String(r.status || 'REQUESTED').toUpperCase() === 'REQUESTED') rdPending++;
+  });
+
+  var shiftsToday = allSh.filter(function (s) { return dstr(s.workDate) === workDate; })
+    .map(function (s) {
+      return { name: String(s.guardName || s.guardUserId), shiftName: String(s.shiftName || ''),
+               inAt: String(s.checkInAt || ''), outAt: String(s.checkOutAt || ''),
+               contRound: contDepth(allSh, s) };
+    });
+
+  // ── สุขภาพระบบ
+  var trg = [];
+  try {
+    ScriptApp.getProjectTriggers().forEach(function (x) { trg.push(x.getHandlerFunction()); });
+  } catch (e) { trg = ['(อ่านไม่ได้)']; }
+
+  var nf = readTable('Notifications');
+  var lastNf = nf.length ? nf[nf.length - 1] : null;
+
+  return ok({
+    workDate: workDate,
+    dayType: isHoliday(workDate) ? 'HOLIDAY' : 'WORKDAY',
+    serverTime: nowIso(),
+    users: users,
+    today: {
+      rounds: n, checkins: ck, handoverPending: hoPending,
+      incidentsOpen: incOpen, redeemPending: rdPending, shifts: shiftsToday
+    },
+    health: {
+      triggers: trg,
+      notifyChannel: String(cfgGet('NOTIFY_CHANNEL', 'WEBEX')),
+      lastNotify: lastNf ? { ts: String(lastNf.ts), type: String(lastNf.type || ''),
+                             status: String(lastNf.status || '') } : null,
+      lockMonth: String(cfgGet('LOCK_MONTH', '') || '—'),
+      testDb: !!CFG.TEST_DB_SHEET_ID,
+      shiftPoint: !!(num(cfgGet('SHIFT_LAT', 0)) && num(cfgGet('SHIFT_LNG', 0))),
+      midCount: num(cfgGet('STATION_MID_COUNT', 0), 0),
+      midEnforce: String(cfgGet('STATION_MID_ENFORCE', 'FALSE')),
+      maxCont: num(cfgGet('MAX_CONT_SHIFT', 2), 2)
+    },
+    audit: au.slice(-25).reverse().map(function (a) {
+      return { ts: String(a.ts), userId: String(a.userId || ''), action: String(a.action || ''),
+               refType: String(a.refType || ''), refId: String(a.refId || '') };
+    })
+  });
 }
