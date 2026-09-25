@@ -168,6 +168,62 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
   text-align:center;font-size:15px;font-weight:600;padding:6px}
 hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 a{color:var(--pri2)}
+
+/* ══════ การนำทาง เสียง และเอฟเฟกต์ ══════ */
+button,.btn,a.btn,.cp,.round,.ptlink,.hp summary,#tabbar button{touch-action:manipulation}
+button,.btn,a.btn,.cp,.round{transition:transform .08s ease, filter .08s ease}
+button:active,.btn:active,a.btn:active,.cp:active,.round:active{transform:scale(.975);filter:brightness(1.14)}
+
+/* ปุ่มกลับ — พื้นที่กดขั้นต่ำ 44x44 ตามเกณฑ์ของ Apple */
+.back{min-width:44px;min-height:44px;display:inline-flex;align-items:center;
+  padding:0 12px;margin:-6px 0 -6px -12px}
+
+/* สไลด์ตอนเปลี่ยนหน้า */
+@keyframes slR{from{transform:translateX(28px);opacity:.3}to{transform:none;opacity:1}}
+@keyframes slL{from{transform:translateX(-28px);opacity:.3}to{transform:none;opacity:1}}
+.anim-fwd{animation:slR .22s cubic-bezier(.22,.7,.3,1) both}
+.anim-back{animation:slL .22s cubic-bezier(.22,.7,.3,1) both}
+
+/* แถบเมนูล่างจอ */
+#tabbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;
+  background:var(--card2);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+#tabbar button{flex:1;background:none;border:0;color:var(--dim);width:auto;border-radius:0;
+  padding:9px 0 8px;font-size:11.5px;font-weight:600;line-height:1.3}
+#tabbar button .ic{display:block;font-size:22px;line-height:1.1;margin-bottom:1px;
+  transition:transform .2s cubic-bezier(.3,1.5,.5,1)}
+#tabbar button.on{color:var(--pri2)}
+#tabbar button.on .ic{transform:translateY(-2px) scale(1.1)}
+
+/* ป๊อปสำเร็จกลางจอ */
+#fx{position:fixed;inset:0;z-index:95;display:grid;place-items:center;pointer-events:none}
+@keyframes fxPop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.09);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes fxRing{from{transform:scale(.45);opacity:.85}to{transform:scale(2);opacity:0}}
+#fx .ok{width:104px;height:104px;border-radius:50%;background:var(--ok);color:#03210d;
+  display:grid;place-items:center;font-size:54px;font-weight:800;
+  animation:fxPop .42s cubic-bezier(.2,1.6,.4,1) both}
+#fx .rg{position:absolute;width:104px;height:104px;border-radius:50%;
+  border:3px solid var(--ok);animation:fxRing .75s ease-out both}
+
+/* toast ต้องไม่ถูกแถบเมนูล่างจอทับ */
+body.hastab .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+
+/* toast เด้งขึ้นจากขอบล่าง */
+@keyframes tUp{from{transform:translateY(26px);opacity:0}to{transform:none;opacity:1}}
+.toast:not(.hide){animation:tUp .24s cubic-bezier(.2,1.3,.4,1) both}
+
+/* โครงร่างวิบวับระหว่างรอข้อมูล */
+@keyframes shim{to{background-position:200% 0}}
+.sk{height:16px;border-radius:8px;margin:9px 0;
+  background:linear-gradient(90deg,var(--card2) 25%,var(--line) 50%,var(--card2) 75%);
+  background-size:200% 100%;animation:shim 1.15s linear infinite}
+
+#testbar{background:repeating-linear-gradient(135deg,#b45309,#b45309 12px,#92400e 12px,#92400e 24px)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;animation-iteration-count:1!important;
+    transition-duration:.001s!important}
+}
 </style>
 </head>
 <body>
@@ -741,7 +797,7 @@ a{color:var(--pri2)}
   <div class="topbar"><div class="wrap row between">
     <button class="back" id="btnBackMe">‹ กลับ</button>
     <strong>ข้อมูลส่วนตัว</strong>
-    <span style="width:40px"></span>
+    <button class="back" id="btnSfx" style="margin:0 -12px 0 0" title="เปิด/ปิดเสียง">🔊</button>
   </div></div>
   <div class="wrap">
     <div class="card" style="text-align:center">
@@ -854,6 +910,14 @@ a{color:var(--pri2)}
 </section>
 
 <div id="toast" class="toast hide"></div>
+<div id="fx" class="hide"></div>
+
+<nav id="tabbar" class="hide">
+  <button data-sc="scHome"><span class="ic">🏠</span>หน้าหลัก</button>
+  <button data-sc="scPts"><span class="ic">🏅</span>แต้ม</button>
+  <button data-sc="scHelp"><span class="ic">📖</span>คู่มือ</button>
+  <button data-sc="scMe"><span class="ic">👤</span>ฉัน</button>
+</nav>
 
 <script src="config.js"></script>
 <script>
@@ -866,11 +930,73 @@ var API = window.OL_API || '';
 var $ = function(id){ return document.getElementById(id); };
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
-function show(id){
-  ['scSplash','scLogin','scHome','scMe','scPts','scHelp','scInsp','scRound','scCheck','scInc'].forEach(function(s){
-    $(s).classList.toggle('hide', s!==id);
+var SC_ALL=['scSplash','scLogin','scHome','scMe','scPts','scHelp','scInsp','scRound','scCheck','scInc'];
+var SC_TAB={scHome:0,scPts:1,scHelp:2,scMe:3};
+var SC_DEEP={scHome:0,scPts:1,scHelp:1,scMe:1,scInsp:1,scRound:1,scInc:1,scCheck:2};
+var SC_CUR='';
+
+/* เปลี่ยนหน้าทันที ไม่รอเน็ต — dir: 'fwd' | 'back' | 'none' */
+function show(id, dir){
+  var prev=SC_CUR; SC_CUR=id;
+  SC_ALL.forEach(function(s){ $(s).classList.toggle('hide', s!==id); });
+
+  if(dir!=='none'){
+    var back = (dir==='back') ||
+               (!dir && prev && (SC_DEEP[id]||0) < (SC_DEEP[prev]||0));
+    var el=$(id);
+    el.classList.remove('anim-fwd','anim-back');
+    void el.offsetWidth;                        // บังคับให้เบราว์เซอร์เล่นอนิเมชันซ้ำได้
+    el.classList.add(back?'anim-back':'anim-fwd');
+  }
+
+  var tab=SC_TAB[id]!==undefined;
+  $('tabbar').classList.toggle('hide', !tab);
+  document.body.style.paddingBottom = tab ? '66px' : '0';
+  document.body.classList.toggle('hastab', tab);
+  Array.prototype.forEach.call($('tabbar').children, function(b,i){
+    b.classList.toggle('on', tab && i===SC_TAB[id]);
   });
+
   window.scrollTo(0,0);
+  histSync();
+}
+
+/* ══════ เสียง ══════ */
+var SFX={ac:null,on:true};
+try{ SFX.on = localStorage.getItem('ol_sfx')!=='0'; }catch(e){}
+function sfxUnlock(){
+  try{
+    if(!SFX.ac){ var C=window.AudioContext||window.webkitAudioContext; if(C) SFX.ac=new C(); }
+    if(SFX.ac && SFX.ac.state==='suspended') SFX.ac.resume();
+  }catch(e){}
+}
+document.addEventListener('touchstart', sfxUnlock, {passive:true});
+document.addEventListener('click', sfxUnlock);
+function tone(f,at,dur,vol,type){
+  if(!SFX.on || !SFX.ac) return;
+  try{
+    var ac=SFX.ac, o=ac.createOscillator(), g=ac.createGain(), t0=ac.currentTime+at;
+    o.type=type||'sine'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(vol||.16,t0+.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t0); o.stop(t0+dur+.03);
+  }catch(e){}
+}
+function sfxTap()  { tone(880,0,.045,.05,'triangle'); }
+function sfxOk()   { tone(784,0,.12,.15); tone(1175,.085,.2,.13); }
+function sfxDone() { tone(659,0,.13,.14); tone(880,.1,.13,.14); tone(1319,.2,.32,.12); }
+function sfxErr()  { tone(233,0,.17,.15,'square'); tone(175,.14,.24,.13,'square'); }
+function sfxAlert(){ tone(1046,0,.1,.15); tone(1046,.17,.1,.15); tone(1046,.34,.18,.15); }
+function buzz(ms)  { try{ if(navigator.vibrate) navigator.vibrate(ms||28); }catch(e){} }
+
+/* ป๊อปสำเร็จกลางจอ */
+function fxOk(sym){
+  var f=$('fx'); if(!f) return;
+  f.innerHTML='<div class="rg"></div><div class="ok">'+(sym||'✓')+'</div>';
+  f.classList.remove('hide');
+  clearTimeout(f._t); f._t=setTimeout(function(){ f.classList.add('hide'); f.innerHTML=''; }, 800);
 }
 function toast(msg, ms){
   var t=$('toast'); t.textContent=msg; t.classList.remove('hide');
@@ -1066,7 +1192,7 @@ function loadHome(){
     j.categories.forEach(function(c){
       var o=document.createElement('option'); o.value=c.trim(); o.textContent=c.trim(); sel.appendChild(o);
     });
-    show('scHome'); qFlush(); loadPoints();
+    show('scHome','none'); qFlush(); loadPoints();
   });
 }
 
@@ -1109,8 +1235,8 @@ function paintPoints(p){
 
 /* ========================= รางวัลของฉัน ========================= */
 function openPts(){
-  show('scPts');
-  $('pbBadges').innerHTML = '<p class="muted">กำลังโหลด…</p>';
+  show('scPts','fwd');
+  $('pbBadges').innerHTML = '<div class="sk" style="width:70%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:55%"></div>';
   $('pbShop').innerHTML = ''; $('pbRedeem').innerHTML = ''; $('pbHist').innerHTML = '';
   api('ptBoard').then(function(j){ paintBoard(j); })
     .catch(function(e){ $('pbBadges').innerHTML = '<p class="muted">โหลดไม่สำเร็จ — ' + e.message + '</p>'; });
@@ -1319,9 +1445,11 @@ function paintShift(){
       });
     }).then(function(r){
       if(!r) return;
+      if(r.onTime){ sfxDone(); fxOk('✓'); } else { sfxOk(); fxOk('⏱'); }
+      buzz(40);
       toast(r.onTime?('เข้าเวรเรียบร้อย · '+(r.planName||'')):('เข้าเวรแล้ว · สาย '+r.lateMin+' นาที'), 3500);
       return loadHome();
-    }).catch(function(e){ toast(e.message,4000); btn.disabled=false; });
+    }).catch(function(e){ sfxErr(); toast(e.message,4000); btn.disabled=false; });
   };
 }
 
@@ -1341,11 +1469,14 @@ function doShiftOut(btn, taker, emergency, reason){
     });
   }).then(function(r){
     if(!r) return;
+    if(r.emergency){ sfxAlert(); } else { sfxDone(); fxOk('✓'); }
+    buzz(40);
     toast(r.emergency?'บันทึกออกเวรฉุกเฉินแล้ว — แจ้งผู้จัดการเรียบร้อย'
                      :('ออกเวรเรียบร้อย'+(r.handoverTo?' · ส่งเวรให้ '+r.handoverTo:'')), 4000);
     return loadHome();
   }).catch(function(e){
     var m=String(e.message||'');
+    sfxErr();
     if(m.indexOf('NO_TAKER|')===0){ toast(m.split('|')[1],4000); loadHome(); return; }
     toast(m,4000); btn.disabled=false;
   });
@@ -1364,11 +1495,12 @@ function doShiftCont(btn){
     });
   }).then(function(r){
     if(!r) return;
+    sfxDone(); fxOk('🔁'); buzz(45);
     toast('ควงกะเรียบร้อย · ผลัดที่ '+r.contRound+
           (r.plannedEnd?' · ครบกำหนด '+hhmm(r.plannedEnd)+' น. วันพรุ่งนี้':''), 5000);
     return loadHome();
   }).catch(function(e){
-    toast((e&&e.message)||'ควงกะไม่สำเร็จ',4500);
+    sfxErr(); toast((e&&e.message)||'ควงกะไม่สำเร็จ',4500);
     btn.disabled=false; btn.textContent='🔁 ควงกะต่ออีกผลัด';
   });
 }
@@ -1438,13 +1570,14 @@ function midConfirm(r,cp){
       clientTs:new Date().toISOString(), ua:navigator.userAgent,
       answers:[], photos:[], note:'ยืนยันกลางทาง' });
   }).then(function(){
+    sfxOk(); fxOk('📍'); buzz(25);
     toast('ยืนยันตำแหน่งแล้ว ✅');
     return loadHome();
   }).then(function(){
     var x=S.boot.rounds.filter(function(y){ return y.roundId===r.roundId; })[0];
     if(x) openRound(x);
   })['catch'](function(e){
-    toast((e&&e.message)||'ยืนยันไม่สำเร็จ',4500);
+    sfxErr(); toast((e&&e.message)||'ยืนยันไม่สำเร็จ',4500);
     var q=$('btnStMid'); if(q){ q.disabled=false; q.textContent='📍 ยืนยันอยู่ประจำจุด'; }
   });
 }
@@ -1995,6 +2128,8 @@ $('btnSaveCheckin').onclick=function(){
   }
 
   api('checkin', body).then(function(j){
+    if(j.pointsTotal && j.pointsDone>=j.pointsTotal){ sfxDone(); fxOk('🎉'); buzz(45); }
+    else                                            { sfxOk();   fxOk('✓');  buzz(22); }
     if(j.mode==='FREE'){
       stopCam();
       toast('บันทึกการตรวจเพิ่มแล้ว', 3000);
@@ -2176,7 +2311,7 @@ $('btnMe').onclick      = function(){ paintMe(); show('scMe'); };
 $('btnHelpHome').onclick= function(){ show('scHelp'); };
 $('btnFreeHome').onclick= function(){ openFree(); };
 $('btnPtOpen').onclick  = function(){ openPts(); };
-$('btnBackPts').onclick = function(){ show('scHome'); };
+$('btnBackPts').onclick = function(){ goBack(); };
 
 /* ---------- สุ่มตรวจ (หัวหน้าเวร / แอดมิน) ---------- */
 function paintInspCps(){
@@ -2203,7 +2338,7 @@ $('btnInspHome').onclick=function(){
   paintInspCps(); show('scInsp');
   getPos().then(function(p){ S.pos=p; paintInspCps(); }).catch(function(){ paintInspCps(); });
 };
-$('btnBackInsp').onclick=function(){ show('scHome'); };
+$('btnBackInsp').onclick=function(){ goBack(); };
 $('btnInspPick').onclick=function(){ $('inspPhoto').click(); };
 $('inspPhoto').onchange=function(){
   var f=this.files && this.files[0]; if(!f) return;
@@ -2227,9 +2362,9 @@ $('btnInspSave').onclick=function(){
   }).catch(function(e){ toast(e.message, 4000); })
   .then(function(){ btn.disabled=false; btn.textContent='บันทึกการสุ่มตรวจ'; });
 };
-$('btnBackHelp').onclick= function(){ show('scHome'); };
+$('btnBackHelp').onclick= function(){ goBack(); };
 $('lnkHelpLogin').onclick=function(e){ e.preventDefault(); show('scHelp'); };
-$('btnBackMe').onclick  = function(){ show('scHome'); };
+$('btnBackMe').onclick  = function(){ goBack(); };
 $('btnPickAvatar').onclick = function(){ $('fileAvatar').click(); };
 
 $('fileAvatar').onchange=function(){
@@ -2296,50 +2431,62 @@ $('btnSplashLogout').onclick=function(){
 };
 
 /* ========================= ปุ่มย้อนกลับ + ปัดหน้าจอ ========================= */
-$('btnBackHome').onclick=function(){ loadHome(); };
-$('btnBackRound').onclick=function(){ stopCam(); show('scRound'); };
+$('btnBackHome').onclick=function(){ goBack(); };
+$('btnBackRound').onclick=function(){ goBack(); };
 
 /* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
-function curScreen(){
-  var ids=['scHome','scMe','scPts','scHelp','scInsp','scRound','scCheck','scInc'];
-  for(var i=0;i<ids.length;i++) if(!$(ids[i]).classList.contains('hide')) return ids[i];
-  return '';
-}
-function goBack(){
-  var c=curScreen();
-  if(c==='scCheck'){ stopCam(); show('scRound'); toast('ย้อนกลับ'); }
-  else if(c==='scMe' || c==='scPts' || c==='scHelp' || c==='scInsp'){ show('scHome'); }
-  else if(c==='scRound'||c==='scInc'){ loadHome(); toast('กลับหน้าหลัก'); }
-}
-function goForward(){
-  var c=curScreen();
-  if(c==='scHome'){
-    var r=nextRound();
-    if(r && !roundClosed(r)) openRound(r); else toast('ยังไม่มีรอบที่เดินได้ตอนนี้');
-  }else if(c==='scRound'){
-    if(roundClosed(S.round)) { toast('รอบนี้ปิดแล้ว'); return; }
-    var done=doneIn(S.round.roundId);
-    var next=S.boot.checkpoints.filter(function(cp){ return done.indexOf(cp.cpId)<0; })[0];
-    if(next) openCheck(next); else toast('เดินครบทุกจุดแล้ว');
+function curScreen(){ return SC_CUR; }
+function stopCamSafe(){ try{ stopCam(); }catch(e){} }
+
+/* ใช้ประวัติหน้าเว็บเป็นตัวรับ gesture ย้อนกลับของระบบปฏิบัติการ
+   มีรายการค้างไว้ 1 รายการตราบใดที่ยังไม่ได้อยู่หน้าหลัก */
+var HIST_ON=false;
+function histSync(){
+  var c=SC_CUR;
+  var atRoot = (c==='scHome' || c==='scLogin' || c==='scSplash' || c==='');
+  if(!atRoot && !HIST_ON){
+    try{ history.pushState({ol:1},''); HIST_ON=true; }catch(e){}
   }
 }
-(function swipe(){
-  var x0=0,y0=0,t0=0,ok=false;
-  document.addEventListener('touchstart',function(e){
-    if(e.touches.length!==1){ ok=false; return; }
-    var el=e.target;
-    if(el.closest && el.closest('input,textarea,select,button,video,.cp,.round')){ ok=false; return; }
-    var t=e.touches[0]; x0=t.clientX; y0=t.clientY; t0=Date.now(); ok=true;
-  }, {passive:true});
-  document.addEventListener('touchend',function(e){
-    if(!ok) return; ok=false;
-    var t=e.changedTouches[0];
-    var dx=t.clientX-x0, dy=t.clientY-y0, dt=Date.now()-t0;
-    if(dt>800) return;
-    if(Math.abs(dx)<70 || Math.abs(dy)>60) return;
-    if(dx<0) goBack(); else goForward();
-  }, {passive:true});
-})();
+window.addEventListener('popstate', function(){
+  HIST_ON=false;
+  if(SC_CUR==='scHome' || SC_CUR==='scLogin' || SC_CUR==='scSplash') return;
+  goBack();
+});
+
+function goBack(){
+  sfxTap();
+  var c=SC_CUR;
+  if(c==='scCheck'){ stopCamSafe(); show('scRound','back'); return; }
+  if(c==='scMe'||c==='scPts'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'){
+    stopCamSafe();
+    show('scHome','back');       // เปลี่ยนหน้าก่อน
+    loadHome();                  // แล้วค่อยดึงข้อมูลใหม่เบื้องหลัง
+  }
+}
+
+/* แถบเมนูล่างจอ */
+Array.prototype.forEach.call($('tabbar').children, function(b){
+  b.onclick=function(){
+    var id=b.dataset.sc;
+    if(id===SC_CUR) return;
+    sfxTap();
+    if(id==='scHome'){ show('scHome','back'); loadHome(); return; }
+    if(id==='scPts') { openPts(); return; }
+    if(id==='scMe')  { paintMe(); show('scMe','fwd'); return; }
+    show(id,'fwd');
+  };
+});
+
+/* ปุ่มเปิด/ปิดเสียง */
+$('btnSfx').onclick=function(){
+  SFX.on=!SFX.on;
+  try{ localStorage.setItem('ol_sfx', SFX.on?'1':'0'); }catch(e){}
+  this.textContent = SFX.on?'🔊':'🔇';
+  if(SFX.on){ sfxUnlock(); sfxOk(); }
+  toast(SFX.on?'เปิดเสียงแล้ว':'ปิดเสียงแล้ว');
+};
+(function(){ var b=$('btnSfx'); if(b) b.textContent = SFX.on?'🔊':'🔇'; })();
 
 /* ========================= เริ่มทำงาน ========================= */
 (function init(){
