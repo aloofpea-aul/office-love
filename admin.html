@@ -35,6 +35,15 @@ th{color:var(--dim);font-weight:600;font-size:14px}
 .pill.ok{background:rgba(34,197,94,.18);color:#86efac}
 .pill.off{background:rgba(239,68,68,.18);color:#fca5a5}
 /* ค่าระบบ — แสดงเป็นการ์ด ไม่ใช่ตาราง เพราะบนมือถือช่องค่าจะถูกบีบจนมองไม่เห็นตัวเลข */
+.ovgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.ovgrid>div{background:var(--card2);border:1px solid var(--line);border-radius:12px;
+  padding:10px 4px;text-align:center}
+.ovgrid b{display:block;font-size:24px;line-height:1.15}
+.ovgrid span{font-size:12px;color:var(--dim)}
+.ovhl{display:flex;justify-content:space-between;gap:12px;
+  padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+.ovhl:last-child{border-bottom:none}
+.ovhl b{text-align:right}
 .cfrow{border-bottom:1px solid var(--line);padding:12px 0}
 .cfrow:last-child{border-bottom:none}
 .cfhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -84,7 +93,8 @@ th{color:var(--dim);font-weight:600;font-size:14px}
   </div>
 
   <div class="tabs">
-    <button data-t="cp"  class="on">จุดตรวจ</button>
+    <button data-t="ov" class="on">ภาพรวม</button>
+    <button data-t="cp">จุดตรวจ</button>
     <button data-t="cl">เช็คลิสต์</button>
     <button data-t="rp">ตารางรอบ</button>
     <button data-t="sp">ตารางกะ</button>
@@ -92,8 +102,36 @@ th{color:var(--dim);font-weight:600;font-size:14px}
     <button data-t="cf">ค่าระบบ</button>
   </div>
 
+  <!-- ── ภาพรวม ── -->
+  <div id="tab-ov">
+    <div class="card">
+      <div class="row between">
+        <h2 style="margin:0">สถานะวันนี้</h2>
+        <span class="pill" id="ovDate">—</span>
+      </div>
+      <div class="ovgrid" id="ovRounds"></div>
+      <div class="ovgrid" id="ovWork" style="margin-top:8px"></div>
+      <div id="ovShifts" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h2>ผู้ใช้งานในระบบ</h2>
+      <div style="overflow-x:auto"><table id="ovUsers"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>สุขภาพระบบ</h2>
+      <div id="ovHealth"></div>
+    </div>
+
+    <div class="card">
+      <h2>25 เหตุการณ์ล่าสุด</h2>
+      <div style="overflow-x:auto"><table id="ovAudit"></table></div>
+    </div>
+  </div>
+
   <!-- ── จุดตรวจ ── -->
-  <div id="tab-cp">
+  <div id="tab-cp" class="hide">
     <div class="card">
       <h2>แผนที่จุดตรวจ</h2>
       <p class="muted">แตะจุดบนแผนที่เพื่อแก้ไข · ลากหมุดเพื่อย้ายตำแหน่ง · วงกลมคือรัศมีที่ยอมรับ</p>
@@ -377,7 +415,91 @@ function load(){
     $('whoami').textContent=j.user.name+' · ผู้ดูแลระบบ';
     $('scLogin').classList.add('hide'); $('scMain').classList.remove('hide');
     drawMap(); drawCpTable(); drawClTable(); drawRpTable(); drawSpTable(); drawHdTable(); drawCfTable(); drawShiftPoint(); fillCpSelect();
+    loadOverview();
   });
+}
+
+/* ===================== ภาพรวม ===================== */
+function ago(iso){
+  if(!iso) return '—';
+  var ms=Date.now()-new Date(iso).getTime();
+  if(isNaN(ms)) return '—';
+  var m=Math.round(ms/60000);
+  if(m<1)    return 'เมื่อกี้';
+  if(m<60)   return m+' นาทีที่แล้ว';
+  var h=Math.round(m/60);
+  if(h<24)   return h+' ชม.ที่แล้ว';
+  var d=Math.round(h/24);
+  return d<30 ? d+' วันที่แล้ว' : 'นานกว่า 1 เดือน';
+}
+function hm(iso){ if(!iso) return '—'; var d=new Date(iso);
+  return (d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes(); }
+
+function loadOverview(){
+  if($('ovUsers').dataset.busy==='1') return;
+  $('ovUsers').dataset.busy='1';
+  return api('ownerOverview').then(function(j){ drawOverview(j); })
+    .catch(function(e){ $('ovHealth').innerHTML='<p class="muted">โหลดไม่สำเร็จ: '+esc(e.message)+'</p>'; })
+    .then(function(){ $('ovUsers').dataset.busy=''; });
+}
+
+function drawOverview(j){
+  var r=j.today.rounds;
+  $('ovDate').textContent = j.workDate + (j.dayType==='HOLIDAY'?' · วันหยุด':' · วันทำการ');
+  $('ovRounds').innerHTML=
+    '<div><b style="color:#86efac">'+r.ok+'</b><span>รอบครบ</span></div>'+
+    '<div><b style="color:var(--pri2)">'+r.run+'</b><span>กำลังเดิน</span></div>'+
+    '<div><b>'+r.wait+'</b><span>รอเวลา</span></div>'+
+    '<div><b style="color:#fca5a5">'+r.bad+'</b><span>ขาด/ไม่ครบ</span></div>';
+  $('ovWork').innerHTML=
+    '<div><b>'+j.today.checkins+'</b><span>เช็คอินวันนี้</span></div>'+
+    '<div><b'+(j.today.handoverPending?' style="color:#fbbf24"':'')+'>'+j.today.handoverPending+'</b><span>รอรับทราบเวร</span></div>'+
+    '<div><b'+(j.today.incidentsOpen?' style="color:#fca5a5"':'')+'>'+j.today.incidentsOpen+'</b><span>เหตุยังไม่ปิด</span></div>'+
+    '<div><b'+(j.today.redeemPending?' style="color:#fbbf24"':'')+'>'+j.today.redeemPending+'</b><span>คำขอแลกของ</span></div>';
+
+  var sh=j.today.shifts||[];
+  $('ovShifts').innerHTML = sh.length
+    ? sh.map(function(s){
+        return '<div class="ovhl"><span>'+esc(s.name)+
+          (s.contRound>1?' <span class="pill warn">🔁 ผลัดที่ '+s.contRound+'</span>':'')+
+          '</span><b>'+hm(s.inAt)+' → '+(s.outAt?hm(s.outAt):'<span class="pill ok">อยู่เวร</span>')+'</b></div>';
+      }).join('')
+    : '<p class="muted" style="margin:0">ยังไม่มีใครลงเวลาเข้าเวรวันนี้</p>';
+
+  var RN={ADMIN:'ผู้ดูแลระบบ',SUPERVISOR:'หัวหน้าเวร',GUARD:'ยาม'};
+  var h='<tr><th>ชื่อ</th><th>รหัส</th><th>สิทธิ์</th><th>เข้าใช้ล่าสุด</th><th>ตอนนี้</th></tr>';
+  (j.users||[]).forEach(function(u){
+    var now = u.onDutySince ? '<span class="pill ok">🟢 อยู่เวร</span>'
+            : u.test        ? '<span class="pill warn">🧪 ทดสอบ</span>'
+            : !u.active     ? '<span class="pill off">ปิดใช้งาน</span>' : '—';
+    h+='<tr><td><b>'+esc(u.name)+'</b>'+(u.position?'<br><span class="muted">'+esc(u.position)+'</span>':'')+'</td>'+
+       '<td><code>'+esc(u.userId)+'</code></td>'+
+       '<td>'+(RN[u.role]||esc(u.role))+'</td>'+
+       '<td>'+ago(u.lastLogin)+'</td>'+
+       '<td>'+now+'</td></tr>';
+  });
+  $('ovUsers').innerHTML=h;
+
+  var x=j.health, ln=x.lastNotify;
+  var rows=[
+    ['trigger ที่ติดตั้งไว้', (x.triggers&&x.triggers.length)?esc(x.triggers.join(', ')):'<span style="color:#fca5a5">ไม่มีเลย</span>'],
+    ['ช่องทางแจ้งเตือน', esc(x.notifyChannel)],
+    ['แจ้งเตือนล่าสุด', ln?(esc(ln.type)+' · '+ago(ln.ts)+' · '+esc(ln.status)):'—'],
+    ['จุดลงเวลาเข้า-ออกเวร', x.shiftPoint?'<span class="pill ok">ตั้งแล้ว</span>':'<span class="pill off">ยังไม่ได้ตั้ง</span>'],
+    ['ยืนยันกลางทาง', x.midCount>0?('เปิด '+x.midCount+' ครั้ง/รอบ · ตัดแต้ม '+(String(x.midEnforce).toUpperCase()==='TRUE'?'ใช่':'ยังไม่ตัด')):'<span class="pill off">ปิดอยู่</span>'],
+    ['ควงกะสูงสุด', x.maxCont+' ผลัด'],
+    ['ไฟล์ทดสอบ', x.testDb?'<span class="pill ok">เชื่อมแล้ว</span>':'<span class="pill off">ไม่ได้ใช้</span>'],
+    ['เดือนที่ล็อกข้อมูล', esc(x.lockMonth)]
+  ];
+  $('ovHealth').innerHTML = rows.map(function(a){
+    return '<div class="ovhl"><span class="muted">'+a[0]+'</span><b>'+a[1]+'</b></div>'; }).join('');
+
+  var a='<tr><th>เวลา</th><th>ใคร</th><th>ทำอะไร</th><th>อ้างอิง</th></tr>';
+  (j.audit||[]).forEach(function(v){
+    a+='<tr><td>'+hm(v.ts)+'</td><td><code>'+esc(v.userId)+'</code></td>'+
+       '<td>'+esc(v.action)+'</td><td class="muted">'+esc(v.refType)+' '+esc(v.refId)+'</td></tr>';
+  });
+  $('ovAudit').innerHTML=a;
 }
 
 /* ===================== แท็บ ===================== */
@@ -385,8 +507,9 @@ Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(
   b.onclick=function(){
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(x){x.classList.remove('on');});
     b.classList.add('on');
-    ['cp','cl','rp','sp','hd','cf'].forEach(function(t){ $('tab-'+t).classList.toggle('hide', t!==b.dataset.t); });
+    ['ov','cp','cl','rp','sp','hd','cf'].forEach(function(t){ $('tab-'+t).classList.toggle('hide', t!==b.dataset.t); });
     if(b.dataset.t==='cp' && S.map) setTimeout(function(){ S.map.invalidateSize(); },50);
+    if(b.dataset.t==='ov') loadOverview();
   };
 });
 
