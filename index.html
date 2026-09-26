@@ -373,7 +373,7 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
         </div>
         <span class="pill" id="dayTypePill"></span>
       </div>
-      <hr>
+      <hr id="hrShift">
       <div id="shiftBox"></div>
     </div>
 
@@ -393,6 +393,37 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
       <a class="btn btn-ghost" id="lnkAdmin" href="admin.html" style="text-decoration:none">⚙️ ตั้งค่าระบบ</a>
       <button class="btn-ghost" id="btnInspHome" style="margin-top:8px">🔍 สุ่มตรวจจุด (ไม่นับเป็นรอบ)</button>
     </div>
+  </div>
+</section>
+
+<!-- ───────────── แต้มทีม (หัวหน้าเวร / แอดมิน) ───────────── -->
+<section id="scTeam" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackTeam">‹ กลับ</button>
+    <strong>แต้มทีม</strong>
+    <span style="width:44px"></span>
+  </div></div>
+  <div class="wrap">
+    <div class="card">
+      <h3>อันดับแต้มเดือนนี้</h3>
+      <div id="tmBoard"></div>
+    </div>
+    <div class="card">
+      <div class="row between">
+        <h3 style="margin:0">คำขอแลกของรางวัล</h3>
+        <span class="pill" id="tmPendCount">—</span>
+      </div>
+      <div id="tmPend" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h3>งบของรางวัลเดือนนี้</h3>
+      <div id="tmBudget"></div>
+    </div>
+    <div class="card">
+      <h3>ประวัติการแลกล่าสุด</h3>
+      <div id="tmHist"></div>
+    </div>
+    <div style="height:10px"></div>
   </div>
 </section>
 
@@ -977,9 +1008,9 @@ var API = window.OL_API || '';
 var $ = function(id){ return document.getElementById(id); };
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
-var SC_ALL=['scSplash','scLogin','scHome','scMe','scPts','scHelp','scInsp','scRound','scCheck','scInc'];
-var SC_TAB={scHome:0,scPts:1,scHelp:2,scMe:3};
-var SC_DEEP={scHome:0,scPts:1,scHelp:1,scMe:1,scInsp:1,scRound:1,scInc:1,scCheck:2};
+var SC_ALL=['scSplash','scLogin','scHome','scMe','scPts','scTeam','scHelp','scInsp','scRound','scCheck','scInc'];
+var SC_TAB={scHome:0,scPts:1,scTeam:1,scHelp:2,scMe:3};
+var SC_DEEP={scHome:0,scPts:1,scTeam:1,scHelp:1,scMe:1,scInsp:1,scRound:1,scInc:1,scCheck:2};
 var SC_CUR='';
 
 /* เปลี่ยนหน้าทันที ไม่รอเน็ต — dir: 'fwd' | 'back' | 'none' */
@@ -1239,7 +1270,15 @@ function loadHome(){
     var nSched=((j.rounds||[]).filter(function(r){ return String(r.mode||'')!=='FREE'; })).length;
   p.textContent=(j.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+' · '+nSched+' รอบ';
     p.className='pill '+(j.dayType==='HOLIDAY'?'warn':'live');
-    paintMe(); paintAdmin(); paintShift(); paintHandover(); paintRounds(); startReminder();
+      var adm = j.user.role==='ADMIN';
+    $('btnFreeHome').classList.toggle('hide', adm);
+    if(adm) $('nextRound').innerHTML='';
+    var tb=$('tabbar').children[1];
+    tb.innerHTML = (j.user.role==='ADMIN'||j.user.role==='SUPERVISOR')
+      ? '<span class="ic">👥</span>แต้มทีม' : '<span class="ic">🏅</span>แต้ม';
+
+    paintMe(); paintAdmin(); paintShift(); paintHandover(); paintRounds();
+    if(!adm) startReminder();
     var staff = j.user.role==='SUPERVISOR' || j.user.role==='ADMIN';
     $('staffLinks').classList.toggle('hide', !staff);
     $('lnkAdmin').classList.toggle('hide', j.user.role!=='ADMIN');
@@ -1290,7 +1329,10 @@ function paintPoints(p){
 }
 
 /* ========================= รางวัลของฉัน ========================= */
+function isStaff(){ return !!S.me && (S.me.role==='ADMIN' || S.me.role==='SUPERVISOR'); }
+
 function openPts(){
+  if(isStaff()) return openTeam();
   show('scPts','fwd');
   $('pbBadges').innerHTML = '<div class="sk" style="width:70%"></div><div class="sk" style="width:90%"></div><div class="sk" style="width:55%"></div>';
   $('pbShop').innerHTML = ''; $('pbRedeem').innerHTML = ''; $('pbHist').innerHTML = '';
@@ -1400,6 +1442,13 @@ function myPlan(){
 
 function paintShift(){
   var b=$('shiftBox'), sh=S.boot.shift, others=S.boot.othersOnDuty||[];
+
+  /* ผู้ดูแลระบบไม่ใช่ผู้ปฏิบัติงาน จึงไม่มีปุ่มลงเวลาเข้า-ออกเวร */
+  if(S.me && S.me.role==='ADMIN'){
+    b.innerHTML='';
+    var hr=$('hrShift'); if(hr) hr.classList.add('hide');
+    return;
+  }
 
   if(sh){
     var plan=myPlan(), endMs=sh.plannedEnd?new Date(sh.plannedEnd).getTime():0;
@@ -1709,7 +1758,10 @@ function paintRounds(){
       (lock?'<div class="muted" style="font-size:14px">ปิดรับบันทึกแล้วเมื่อ '+hhmm(r.closeAt)+' น.</div>':'')+
       '<div class="dots">'+dots+'</div></div>'+
       '<span class="pill '+(lock?'bad':st.k)+'">'+(lock?'ล็อค':st.t)+'</span>';
-    div.onclick=function(){ openRound(r); };
+    div.onclick=function(){
+      if(S.me && S.me.role==='ADMIN'){ toast('ผู้ดูแลระบบดูได้อย่างเดียว — ใช้บัญชีทดสอบถ้าต้องการลองเดินรอบ',4000); return; }
+      openRound(r);
+    };
     box.appendChild(div);
   });
   paintFreeRow();
@@ -2421,6 +2473,7 @@ $('btnInspSave').onclick=function(){
 $('btnBackHelp').onclick= function(){ goBack(); };
 $('lnkHelpLogin').onclick=function(e){ e.preventDefault(); show('scHelp'); };
 $('btnBackMe').onclick  = function(){ goBack(); };
+$('btnBackTeam').onclick= function(){ goBack(); };
 $('btnPickAvatar').onclick = function(){ $('fileAvatar').click(); };
 
 $('fileAvatar').onchange=function(){
@@ -2491,6 +2544,88 @@ $('btnBackHome').onclick=function(){ goBack(); };
 $('btnBackRound').onclick=function(){ goBack(); };
 
 /* ปัดนิ้วไปทางซ้าย = ถอยกลับ · ปัดไปทางขวา = ไปต่อ */
+/* ========================= แต้มทีม ========================= */
+function openTeam(){
+  show('scTeam','fwd');
+  $('tmBoard').innerHTML='<div class="sk"></div><div class="sk" style="width:72%"></div>';
+  $('tmPend').innerHTML=''; $('tmBudget').innerHTML='<div class="sk"></div>'; $('tmHist').innerHTML='';
+  $('tmPendCount').textContent='…';
+  api('teamPoints').then(paintTeam).catch(function(e){
+    $('tmBoard').innerHTML='<p class="muted">โหลดไม่สำเร็จ: '+(e.message||'')+'</p>';
+    $('tmBudget').innerHTML='';
+  });
+}
+
+function paintTeam(j){
+  S.team=j;
+  var top=1;
+  (j.board||[]).forEach(function(b){ if(b.month>top) top=b.month; });
+
+  $('tmBoard').innerHTML = (j.board||[]).length
+    ? j.board.map(function(b,i){
+        var pc=Math.max(3,Math.round(b.month*100/top));
+        return '<div style="padding:11px 0;border-bottom:1px solid var(--line)">'+
+          '<div class="row between"><div><b>'+(i===0?'🥇 ':(i===1?'🥈 ':'🥉 '))+b.name+'</b>'+
+          '<div class="muted" style="font-size:14px">ระดับ '+b.level+' · '+b.levelName+
+          ' · รอบวันนี้ '+b.roundsDone+'/'+b.roundsTotal+'</div></div>'+
+          '<div style="text-align:right"><b style="font-size:21px">'+ptFmt(b.month)+'</b>'+
+          '<div class="muted" style="font-size:13px">แต้มเดือนนี้</div></div></div>'+
+          '<div class="ptbar" style="margin-top:7px"><i style="width:'+pc+'%"></i></div>'+
+          '<div class="muted" style="font-size:13px;margin-top:5px">วันนี้ '+ptFmt(b.today)+
+          ' · สะสม '+ptFmt(b.career)+' · คงเหลือแลกได้ '+ptFmt(b.balance)+'</div></div>';
+      }).join('')
+    : '<p class="muted">ยังไม่มีข้อมูลแต้มของยาม</p>';
+
+  var pd=j.pending||[];
+  $('tmPendCount').textContent = pd.length ? ('รออนุมัติ '+pd.length) : 'ไม่มีค้าง';
+  $('tmPendCount').className   = 'pill '+(pd.length?'warn':'ok');
+  $('tmPend').innerHTML = pd.length
+    ? pd.map(function(r){
+        return '<div class="banner warn" style="margin:0 0 10px">'+
+          '<b>'+r.userName+'</b> · '+r.rewardName+'<br>'+
+          '<span class="muted" style="font-size:14px">'+ptFmt(r.cost)+' แต้ม · '+hhmm(r.ts)+' น.</span>'+
+          '<div class="row" style="gap:8px;margin-top:9px">'+
+          '<button class="btn-ghost btn-sm" style="flex:1;margin:0" data-ok="'+r.redId+'">✅ จ่ายแล้ว</button>'+
+          '<button class="btn-ghost btn-sm" style="flex:1;margin:0" data-no="'+r.redId+'">✖️ ยกเลิก</button>'+
+          '</div></div>';
+      }).join('')
+    : '<p class="muted" style="margin:0">ไม่มีคำขอค้างอยู่</p>';
+
+  Array.prototype.forEach.call($('tmPend').querySelectorAll('[data-ok],[data-no]'),function(b){
+    b.onclick=function(){
+      var ok=!!b.dataset.ok, id=ok?b.dataset.ok:b.dataset.no;
+      if(!confirm(ok?'ยืนยันว่าจ่ายของรางวัลให้แล้ว?'
+                    :'ยกเลิกรายการนี้ ระบบจะคืนแต้มให้อัตโนมัติ ยืนยันหรือไม่')) return;
+      b.disabled=true;
+      api('redeemUpdate',{redId:id,status:ok?'GIVEN':'CANCELLED'})
+        .then(function(){ sfxOk(); fxOk(ok?'✓':'↩'); toast(ok?'บันทึกว่าจ่ายแล้ว':'ยกเลิกและคืนแต้มแล้ว'); return openTeam(); })
+        .catch(function(e){ sfxErr(); toast(e.message,4000); b.disabled=false; });
+    };
+  });
+
+  var g=j.budget||{};
+  $('tmBudget').innerHTML=
+    '<div class="row between"><span class="muted">แลกไปแล้วเดือนนี้</span>'+
+      '<b>'+ptFmt(g.spentPts)+' แต้ม ≈ '+ptFmt(g.spentBaht)+' บาท</b></div>'+
+    '<div class="row between" style="margin-top:7px"><span class="muted">งบที่ตั้งไว้</span>'+
+      '<b>'+ptFmt(g.perHeadBaht)+' บาท/คน · '+g.heads+' คน = '+ptFmt(g.capBaht)+' บาท</b></div>'+
+    '<div class="ptbar" style="margin-top:10px"><i style="width:'+(g.pct||0)+'%"></i></div>'+
+    '<div class="muted" style="font-size:13.5px;margin-top:6px">ใช้ไป '+(g.pct||0)+
+      '% ของงบเดือนนี้ · อัตรา '+g.rate+' แต้ม = 1 บาท</div>';
+
+  var hs=j.history||[];
+  var SN={REQUESTED:'รออนุมัติ',GIVEN:'จ่ายแล้ว',CANCELLED:'ยกเลิก'};
+  $('tmHist').innerHTML = hs.length
+    ? hs.map(function(r){
+        return '<div class="row between" style="padding:9px 0;border-bottom:1px solid var(--line)">'+
+          '<div><b>'+r.userName+'</b> <span class="muted">· '+r.rewardName+'</span>'+
+          '<div class="muted" style="font-size:13px">'+r.workDate+' · '+ptFmt(r.cost)+' แต้ม</div></div>'+
+          '<span class="pill '+(r.status==='GIVEN'?'ok':(r.status==='CANCELLED'?'bad':'warn'))+'">'+
+          (SN[r.status]||r.status)+'</span></div>';
+      }).join('')
+    : '<p class="muted" style="margin:0">ยังไม่มีการแลกของรางวัล</p>';
+}
+
 /* แผงผู้ดูแลระบบ — สรุปจากข้อมูลที่หน้าหลักมีอยู่แล้ว ไม่ต้องยิง API เพิ่ม */
 function paintAdmin(){
   var adm = S.me && S.me.role==='ADMIN';
@@ -2573,7 +2708,7 @@ function goBack(){
   sfxTap();
   var c=SC_CUR;
   if(c==='scCheck'){ stopCamSafe(); show('scRound','back'); return; }
-  if(c==='scMe'||c==='scPts'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'){
+  if(c==='scMe'||c==='scPts'||c==='scTeam'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'){
     stopCamSafe();
     show('scHome','back');       // เปลี่ยนหน้าก่อน
     loadHome();                  // แล้วค่อยดึงข้อมูลใหม่เบื้องหลัง
