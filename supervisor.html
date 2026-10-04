@@ -407,6 +407,7 @@ function drawShifts(){
       (x.shiftName?' <span class="muted">· '+esc(x.shiftName)+'</span>':'')+
       ((+x.contRound||1)>1?' <span class="pill warn">🔁 ควงกะ ผลัดที่ '+(+x.contRound)+'</span>':'')+
       (x.contTo?' <span class="pill warn">🔁 ควงต่อ</span>':'')+
+      (String(x.inConfirmBy||'')==='AUTO'?' <span class="pill bad">ไม่มีผู้รับรอง</span>':'')+
       '<div class="muted">เข้า '+hhmm(x.checkInAt)+' น. · ออก '+
       (x.checkOutAt?hhmm(x.checkOutAt)+' น.':'ยังไม่ออก')+
       (x.plannedStart?' · ตามแผน '+hhmm(x.plannedStart)+'–'+hhmm(x.plannedEnd):'')+'</div></div>'+
@@ -420,10 +421,21 @@ function drawHandovers(){
   $('hoCount').textContent=list.length+' ครั้ง';
   if(!list.length){ $('hoList').innerHTML='<p class="muted">วันนี้ยังไม่มีการต่อเวร</p>'; return; }
   $('hoList').innerHTML=list.map(function(h){
-    var acked=!!h.ackAt;
+    var auto  = String(h.status||'').toUpperCase()==='AUTO';
+    var acked = !!h.ackAt;
+    var self  = String(h.outUserId||'')===String(h.inUserId||'');
+
+    /* สถานะสามจุด — เข้าเวร · ยืนยัน+ออกเวร · รับทราบ */
+    var dots, pill, cls;
+    if(auto){            dots='⬤○○'; pill='ปิดอัตโนมัติ'; cls='bad'; }
+    else if(self){       dots='⬤⬤⬤'; pill='🔁 ควงกะ';      cls='warn'; }
+    else if(acked){      dots='⬤⬤⬤'; pill='ครบลูป';        cls='ok'; }
+    else{                dots='⬤⬤○'; pill='รอรับทราบ';     cls='warn'; }
+
     return '<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
       '<div class="row between"><strong>'+hhmm(h.ts)+' น. · '+esc(h.outName)+' → '+esc(h.inName)+'</strong>'+
-      '<span class="pill '+(acked?'ok':'warn')+'">'+(acked?'รับทราบ '+hhmm(h.ackAt)+' น.':'รอรับทราบ')+'</span></div>'+
+      '<span class="pill '+cls+'" title="'+dots+'">'+dots+' '+pill+'</span></div>'+
+      (acked?'<div class="muted" style="margin-top:3px">รับทราบ '+hhmm(h.ackAt)+' น.</div>':'')+
       (h.note?'<div class="muted" style="margin-top:4px">📝 '+esc(h.note)+'</div>'
              :'<div class="muted" style="margin-top:4px">— ไม่มีข้อความส่งต่อ —</div>')+'</div>';
   }).join('');

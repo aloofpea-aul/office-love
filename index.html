@@ -124,12 +124,19 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
   border-radius:10px;padding:10px 12px;margin:10px 0}
 .hp .ok{background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.4);
   border-radius:10px;padding:10px 12px;margin:10px 0}
-#rsWrap{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end}
-#rsWrap .rsBack{position:absolute;inset:0;background:rgba(0,0,0,.6)}
-#rsWrap .rsSheet{position:relative;width:100%;max-height:88vh;overflow:auto;
+#rsWrap,#hoWrap{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end}
+#rsWrap .rsBack,#hoWrap .rsBack{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+#rsWrap .rsSheet,#hoWrap .rsSheet{position:relative;width:100%;max-height:88vh;overflow:auto;
   background:var(--card);border-top-left-radius:18px;border-top-right-radius:18px;
   padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
-#rsWrap h3{margin:0 0 4px}
+#rsWrap h3,#hoWrap h3{margin:0 0 4px}
+.hochk{display:flex;gap:11px;align-items:flex-start;margin:14px 0 6px;
+  font-size:16.5px;line-height:1.45;cursor:pointer}
+.hochk .bx{flex:none;width:27px;height:27px;border-radius:7px;border:2px solid var(--line);
+  background:var(--card2);text-align:center;line-height:23px;font-size:17px;font-weight:700}
+.hochk.on .bx{border-color:var(--pri);background:var(--pri);color:#fff}
+#lateBar{position:sticky;top:0;z-index:62;background:#9b1c1c;color:#fff;cursor:pointer;
+  font-size:13.5px;font-weight:600;line-height:1.45;padding:10px 14px;text-align:center}
 .rsOpt{width:100%;text-align:left;min-height:52px;padding:14px;margin-top:10px;
   font-size:17px;border-radius:12px;background:var(--card2);color:var(--txt);border:1px solid var(--line)}
 .rsOpt.pick{background:var(--pri);border-color:var(--pri);color:#fff}
@@ -244,6 +251,8 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
 
 <div id="testbar" class="hide">🧪 โหมดทดลอง — ข้อมูลไม่เข้าระบบจริง · ไม่มีการแจ้งเตือนออกไปที่ห้องแชท</div>
 
+<div id="lateBar" class="hide"></div>
+
 <div id="qbar" class="queue hide"></div>
 
 <!-- ───────────── เลือกเหตุผลเมื่อยืนยันเอง ───────────── -->
@@ -260,6 +269,24 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
     </div>
     <div style="height:10px"></div>
     <button class="btn-ghost" id="rsCancel">ยกเลิก</button>
+  </div>
+</div>
+
+<!-- ───────────── ยืนยันการส่งเวร ───────────── -->
+<div id="hoWrap" class="hide">
+  <div class="rsBack"></div>
+  <div class="rsSheet">
+    <h3>ยืนยันการส่งเวร</h3>
+    <p class="muted" style="margin:0">ตรวจว่าผู้รับเวรมาถึงจริงก่อนกดยืนยัน</p>
+    <div id="hoWho" class="banner" style="margin-top:12px"></div>
+    <div class="hochk" id="hoChk"><span class="bx" id="hoBx">&nbsp;</span>
+      <span id="hoChkTxt">ยืนยันว่าเขามาถึงและรับเวรแล้วจริง</span></div>
+    <label>ข้อความส่งต่อ (ไม่มีก็เว้นว่างได้)</label>
+    <input id="hoNote" placeholder="เช่น ไฟหน้าอาคารเสีย แจ้งช่างแล้ว">
+    <div style="height:16px"></div>
+    <button id="hoOk">ยืนยันและออกเวร</button>
+    <div style="height:9px"></div>
+    <button class="btn-ghost" id="hoCancel">ยกเลิก</button>
   </div>
 </div>
 
@@ -1447,8 +1474,10 @@ function paintShift(){
   if(S.me && S.me.role==='ADMIN'){
     b.innerHTML='';
     var hr=$('hrShift'); if(hr) hr.classList.add('hide');
+    $('lateBar').classList.add('hide');
     return;
   }
+  if(!sh) $('lateBar').classList.add('hide');
 
   if(sh){
     var plan=myPlan(), endMs=sh.plannedEnd?new Date(sh.plannedEnd).getTime():0;
@@ -1458,7 +1487,10 @@ function paintShift(){
     /* ถ้าเซิร์ฟเวอร์ยังเป็นรุ่นเก่า (ไม่ส่งตารางกะมา) ให้ทำงานแบบเดิม ไม่บังคับผู้รับเวร */
     var hasShiftPlans = !!(S.boot.shiftPlans && S.boot.shiftPlans.length);
     var needTaker = hasShiftPlans ? (!plan || plan.requireHandover) : false;
-    var taker = others.length ? others[0] : null;
+    var today = S.boot.workDate || '';
+    var live  = others.filter(function(o){ return !o.workDate || o.workDate>=today; });
+    var stale = others.filter(function(o){ return o.workDate && o.workDate<today; });
+    var taker = live.length ? live[0] : null;
 
     var head='<div class="row between"><div>'+
       '<div class="muted">'+(sh.shiftName||'อยู่ระหว่างเวร')+
@@ -1468,6 +1500,22 @@ function paintShift(){
       '</h3></div>'+
       '<span class="pill '+(sh.onTime?'ok':'warn')+'">'+
         (sh.onTime?'ตรงเวลา':'สาย '+sh.lateMin+' นาที')+'</span></div>';
+
+    /* ลูปยืนยันสองทาง — เวรของเราถูกใครรับรองหรือยัง */
+    var cfBy=String(sh.inConfirmBy||''), loop='';
+    if(cfBy==='SELF')
+      loop='<div class="banner warn" style="margin-top:10px">🔁 ควงกะต่อจากผลัดก่อนหน้า '+
+           '— ไม่มีผู้รับรองภายนอก เพราะเป็นผู้ปฏิบัติงานคนเดิม</div>';
+    else if(cfBy==='AUTO')
+      loop='<div class="banner bad" style="margin-top:10px">⚠️ ระบบปิดกะก่อนหน้าให้อัตโนมัติ '+
+           '— การเข้าเวรครั้งนี้ไม่มีผู้รับรอง</div>';
+    else if(cfBy)
+      loop='<div class="banner ok" style="margin-top:10px">✅ '+(sh.inConfirmName||'ผู้ส่งเวร')+
+           ' ยืนยันการรับเวรแล้ว'+(sh.inConfirmAt?(' '+hhmm(sh.inConfirmAt)+' น.'):'')+'</div>';
+    else if(stale.length)
+      loop='<div class="banner warn" style="margin-top:10px">⏳ รอ <b>'+stale[0].name+
+           '</b> กดออกเวรเพื่อยืนยันการรับเวรของคุณ'+
+           '<button class="btn-ghost" id="btnPingPrev" style="margin-top:9px">🔔 เตือนให้กดออกเวร</button></div>';
 
     var info='';
     if(endMs && leftMin>hoMin)
@@ -1494,15 +1542,22 @@ function paintShift(){
     }
 
     var btn = canOut
-      ? '<button class="btn-ghost" id="btnOut">ออกเวร'+(taker?' · ส่งเวรให้ '+taker.name:'')+'</button>'+contBtn
+      ? '<button class="'+(taker?'':'btn-ghost')+'" id="btnOut">ออกเวร'+
+        (taker?' · ส่งเวรให้ '+taker.name:'')+'</button>'+contBtn
       : '<button class="btn-ghost" id="btnOut" disabled>🔒 ยังไม่มีผู้รับเวร</button>'+
         '<button class="btn-ghost" id="btnPing" style="margin-top:8px">🔔 เตือนคนกะถัดไป</button>'+
         contBtn+
         '<p class="muted" style="font-size:13px;margin:10px 0 0;text-align:center">'+
         '<a href="#" id="lnkEmg" style="color:#fca5a5">ออกเวรฉุกเฉิน</a></p>';
 
-    b.innerHTML=head+info+'<div style="height:12px"></div>'+btn;
+    b.innerHTML=head+loop+info+'<div style="height:12px"></div>'+btn;
     if($('btnCont')) $('btnCont').onclick=function(){ doShiftCont(this); };
+    if($('btnPingPrev')) $('btnPingPrev').onclick=function(){
+      var x=this; x.disabled=true; sfxTap();
+      api('pingNextShift',{dir:'prev'}).then(function(){ toast('ส่งข้อความเตือนแล้ว',3000); })
+        .catch(function(e){ toast(e.message); }).then(function(){ x.disabled=false; });
+    };
+    paintLateBar(sh, endMs);
 
     if(canOut) $('btnOut').onclick=function(){ doShiftOut(this, taker, false); };
     else{
@@ -1558,56 +1613,84 @@ function paintShift(){
   };
 }
 
-function doShiftOut(btn, taker, emergency, reason){
-  var note='';
-  if(taker && !emergency){
-    note=prompt('เรื่องคงค้างที่ต้องส่งต่อให้ '+taker.name+' (ไม่มีก็เว้นว่างได้)','')||'';
-    if(!confirm('ยืนยันส่งเวรให้ '+taker.name+' และออกเวร?')) return;
-  }
-  btn.disabled=true;
-  getPos().catch(function(){ return null; }).then(function(p){
-    return shiftBody(p,'ออกเวร').then(function(bd){
-      if(!bd){ btn.disabled=false; return null; }
-      bd.handoverNote=note;
-      if(emergency){ bd.emergency=true; bd.emergencyReason=reason||''; }
-      return api('shiftOut', bd);
-    });
-  }).then(function(r){
-    if(!r) return;
-    if(r.emergency){ sfxAlert(); } else { sfxDone(); fxOk('✓'); }
-    buzz(40);
-    toast(r.emergency?'บันทึกออกเวรฉุกเฉินแล้ว — แจ้งผู้จัดการเรียบร้อย'
-                     :('ออกเวรเรียบร้อย'+(r.handoverTo?' · ส่งเวรให้ '+r.handoverTo:'')), 4000);
-    return loadHome();
-  }).catch(function(e){
-    var m=String(e.message||'');
-    sfxErr();
-    if(m.indexOf('NO_TAKER|')===0){ toast(m.split('|')[1],4000); loadHome(); return; }
-    toast(m,4000); btn.disabled=false;
+/* แถบแดงเตือนเมื่อกะเลยกำหนดจบเกิน 1 ชั่วโมง — ปิดไม่ได้ กดแล้วเลื่อนไปที่ปุ่มออกเวร */
+var LATE_BEEPED=false;
+function paintLateBar(sh, endMs){
+  var bar=$('lateBar'); if(!bar) return;
+  var over = (sh && endMs) ? Math.round((Date.now()-endMs)/60000) : -1;
+  if(over < 60){ bar.classList.add('hide'); return; }
+  var h=Math.floor(over/60), m=over%60;
+  bar.innerHTML='⚠️ กะของคุณเลยกำหนดจบมาแล้ว '+(h?h+' ชม. ':'')+m+' นาที — กดออกเวรด่วน';
+  bar.classList.remove('hide');
+  bar.onclick=function(){
+    var el=$('shiftBox'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+  };
+  if(!LATE_BEEPED){ LATE_BEEPED=true; sfxAlert(); buzz(60); }
+}
+
+/* แผ่นยืนยันการส่งเวร — ผู้ส่งเวรต้องรับรองว่าผู้รับเวรมาถึงจริง */
+function askHandover(taker){
+  return new Promise(function(res){
+    var done=false, ticked=false;
+    function close(v){ if(done) return; done=true; $('hoWrap').classList.add('hide'); res(v); }
+
+    $('hoWho').className='banner ok';
+    $('hoWho').innerHTML='<b style="font-size:18px">'+taker.name+'</b>'+
+      '<div style="font-size:14.5px;margin-top:5px">ลงเวลาเข้าเวร '+hhmm(taker.checkInAt)+' น.'+
+      (taker.shiftName?(' · '+taker.shiftName):'')+'</div>';
+    $('hoChkTxt').textContent='ยืนยันว่า '+taker.name+' มาถึงและรับเวรแล้วจริง';
+
+    var chk=$('hoChk');
+    chk.classList.remove('on'); $('hoBx').innerHTML='&nbsp;';
+    chk.onclick=function(){
+      ticked=!ticked; chk.classList.toggle('on',ticked);
+      $('hoBx').innerHTML = ticked?'✓':'&nbsp;';
+      sfxTap();
+    };
+    $('hoNote').value='';
+    $('hoOk').onclick=function(){
+      if(!ticked){ sfxErr(); toast('ติ๊กยืนยันว่า '+taker.name+' มาถึงจริงก่อนครับ',3800); return; }
+      close({ note:$('hoNote').value.trim() });
+    };
+    $('hoCancel').onclick=function(){ close(null); };
+    $('hoWrap').querySelector('.rsBack').onclick=function(){ close(null); };
+    $('hoWrap').classList.remove('hide');
   });
 }
 
-function doShiftCont(btn){
-  var sh=S.boot.shift||{}, n=(+sh.contRound||1)+1;
-  if(!confirm('ควงกะต่ออีก 1 ผลัด\n\n'+
-              'ระบบจะปิดกะปัจจุบันตอนนี้ แล้วเริ่มกะใหม่ทันที\n'+
-              'จะเป็นผลัดที่ '+n+' ติดต่อกัน\n\nยืนยันหรือไม่')) return;
-  btn.disabled=true; btn.textContent='กำลังบันทึก…';
-  getPos().catch(function(){ return null; }).then(function(p){
-    return shiftBody(p,'ควงกะต่อ').then(function(bd){
-      if(!bd){ btn.disabled=false; btn.textContent='🔁 ควงกะต่ออีกผลัด'; return null; }
-      return api('shiftCont', bd);
+function doShiftOut(btn, taker, emergency, reason){
+  if(taker && !emergency){
+    askHandover(taker).then(function(r){ if(r) send(r.note, true); });
+    return;
+  }
+  send('', false);
+
+  function send(note, confirmed){
+    btn.disabled=true;
+    getPos().catch(function(){ return null; }).then(function(p){
+      return shiftBody(p,'ออกเวร').then(function(bd){
+        if(!bd){ btn.disabled=false; return null; }
+        bd.handoverNote=note;
+        bd.confirmArrival=confirmed;
+        if(emergency){ bd.emergency=true; bd.emergencyReason=reason||''; }
+        return api('shiftOut', bd);
+      });
+    }).then(function(r){
+      if(!r) return;
+      if(r.emergency){ sfxAlert(); } else { sfxDone(); fxOk('✓'); }
+      buzz(40);
+      toast(r.emergency?'บันทึกออกเวรฉุกเฉินแล้ว — แจ้งผู้จัดการเรียบร้อย'
+                       :('ออกเวรเรียบร้อย'+(r.handoverTo?' · ยืนยันการรับเวรของ '+r.handoverTo+' แล้ว':'')), 4500);
+      return loadHome();
+    }).catch(function(e){
+      var m=String(e.message||'');
+      sfxErr();
+      if(m.indexOf('NO_TAKER|')===0 || m.indexOf('CONFIRM_REQUIRED|')===0){
+        toast(m.split('|')[1],4000); btn.disabled=false; return;
+      }
+      toast(m,4000); btn.disabled=false;
     });
-  }).then(function(r){
-    if(!r) return;
-    sfxDone(); fxOk('🔁'); buzz(45);
-    toast('ควงกะเรียบร้อย · ผลัดที่ '+r.contRound+
-          (r.plannedEnd?' · ครบกำหนด '+hhmm(r.plannedEnd)+' น. วันพรุ่งนี้':''), 5000);
-    return loadHome();
-  }).catch(function(e){
-    sfxErr(); toast((e&&e.message)||'ควงกะไม่สำเร็จ',4500);
-    btn.disabled=false; btn.textContent='🔁 ควงกะต่ออีกผลัด';
-  });
+  }
 }
 
 function askEmergency(){
