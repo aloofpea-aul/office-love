@@ -314,7 +314,7 @@ th{color:var(--dim);font-weight:600;font-size:14px}
 
     <div class="card">
       <h2>จุดลงเวลาเข้า-ออกเวร</h2>
-      <p class="muted" style="margin-top:0">ยืนที่จุดที่ให้ รปภ. ลงเวลา (เช่น ป้อมยาม / ประตูเข้าออก) แล้วกดเก็บพิกัด
+      <p class="muted" style="margin-top:0">ยืนที่จุดที่ให้ รปภ. ลงเวลา (เช่น ป้อมรักษาการณ์ / ประตูเข้าออก) แล้วกดเก็บพิกัด
         ถ้าเว้นว่างไว้ ระบบจะไม่ตรวจตำแหน่งตอนเข้า-ออกเวร</p>
       <div class="grid">
         <div><label>ละติจูด</label><input id="sp_lat" inputmode="decimal"></div>
@@ -466,7 +466,7 @@ function drawOverview(j){
       }).join('')
     : '<p class="muted" style="margin:0">ยังไม่มีใครลงเวลาเข้าเวรวันนี้</p>';
 
-  var RN={ADMIN:'ผู้ดูแลระบบ',SUPERVISOR:'หัวหน้าเวร',GUARD:'ยาม'};
+  var RN={ADMIN:'ผู้ดูแลระบบ',SUPERVISOR:'หัวหน้าเวร',GUARD:'รปภ.'};
   var h='<tr><th>ชื่อ</th><th>รหัส</th><th>สิทธิ์</th><th>เข้าใช้ล่าสุด</th><th>ตอนนี้</th></tr>';
   (j.users||[]).forEach(function(u){
     var now = u.onDutySince ? '<span class="pill ok">🟢 อยู่เวร</span>'
