@@ -137,6 +137,15 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .hochk.on .bx{border-color:var(--pri);background:var(--pri);color:#fff}
 #lateBar{position:sticky;top:0;z-index:62;background:#9b1c1c;color:#fff;cursor:pointer;
   font-size:13.5px;font-weight:600;line-height:1.45;padding:10px 14px;text-align:center}
+#gpsBar{position:fixed;left:0;right:0;bottom:0;z-index:95;background:#1e3a5f;color:#fff;
+  padding:13px 16px calc(13px + env(safe-area-inset-bottom));font-size:14.5px;font-weight:600;
+  line-height:1.5;display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap}
+#gpsBar.weak{background:#7c4a09}
+#gpsBar .gbtn{width:auto;min-height:40px;padding:8px 15px;margin:0;font-size:14px;
+  border-radius:10px;background:#fff;color:#1e3a5f;border:0;font-weight:700}
+#gpsBar .gdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#7dd3fc;
+  animation:gpulse 1s infinite}
+@keyframes gpulse{0%,100%{opacity:.35}50%{opacity:1}}
 .rsOpt{width:100%;text-align:left;min-height:52px;padding:14px;margin-top:10px;
   font-size:17px;border-radius:12px;background:var(--card2);color:var(--txt);border:1px solid var(--line)}
 .rsOpt.pick{background:var(--pri);border-color:var(--pri);color:#fff}
@@ -252,6 +261,8 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
 <div id="testbar" class="hide">🧪 โหมดทดลอง — ข้อมูลไม่เข้าระบบจริง · ไม่มีการแจ้งเตือนออกไปที่ห้องแชท</div>
 
 <div id="lateBar" class="hide"></div>
+
+<div id="gpsBar" class="hide"></div>
 
 <div id="qbar" class="queue hide"></div>
 
@@ -1220,15 +1231,86 @@ function qFlush(){
 $('qbar').onclick=function(){ qFlush(); };
 window.addEventListener('online', qFlush);
 
-/* ========================= GPS ========================= */
-function getPos(){
+/* ========================= GPS =========================
+   เดิมขอพิกัดแบบ "แม่นที่สุด + ห้ามใช้ค่าที่เพิ่งอ่าน + รอได้ 15 วินาที" ทุกครั้งที่แตะ
+   ในอาคารจึงรอจนครบแล้วล้มเหลวเป็นปกติ และกดจุดถัดไปก็เริ่มรอใหม่จากศูนย์
+   ของใหม่: เฝ้าดูสัญญาณต่อเนื่อง เก็บค่าที่ดีที่สุด แสดงสดๆ ให้เห็น
+            พอถึงเกณฑ์ก็หยุดรอทันที และใช้พิกัดที่เพิ่งอ่านมาซ้ำได้ในรอบเดียวกัน */
+var POSC = { pos:null, at:0 };
+function gpsCfg(k, d){ var v=S.boot&&S.boot[k]; return (v===undefined||v===null||v==='')?d:+v; }
+
+function gpsShow(txt, btnLabel, onBtn, weak){
+  var el=$('gpsBar'); if(!el) return;
+  el.className = weak ? 'weak' : '';
+  el.innerHTML = '<span class="gdot"></span><span>'+txt+'</span>'+
+                 (btnLabel?'<button class="gbtn" id="gpsUse">'+btnLabel+'</button>':'');
+  if(btnLabel && $('gpsUse')) $('gpsUse').onclick=function(){ sfxTap(); onBtn(); };
+}
+function gpsHide(){ var el=$('gpsBar'); if(el){ el.className='hide'; el.innerHTML=''; } }
+
+function posAgeMs(){ return POSC.pos ? Date.now()-POSC.at : 1e9; }
+
+/**
+ * คืนพิกัดที่ใช้งานได้
+ * opt.fresh = true  -> บังคับอ่านใหม่ ไม่ใช้ค่าเดิม (ใช้ตอนเข้า/ออกเวร)
+ * opt.goodM         -> ความแม่นยำที่ถือว่าพอ (เมตร)
+ */
+function getPos(opt){
+  opt = opt || {};
+  var good  = opt.goodM  || gpsCfg('gpsGoodM', 60);
+  var reuse = opt.fresh ? 0 : (opt.reuseMs || gpsCfg('gpsReuseSec', 45)*1000);
+  if(POSC.pos && posAgeMs()<reuse && POSC.pos.coords.accuracy<=good){
+    S.pos=POSC.pos; return Promise.resolve(POSC.pos);
+  }
+  return gpsHunt(good, (opt.huntSec || gpsCfg('gpsHuntSec', 20))*1000);
+}
+
+function gpsHunt(good, huntMs){
   return new Promise(function(res,rej){
     if(!navigator.geolocation) return rej(new Error('เครื่องนี้ไม่รองรับ GPS'));
-    navigator.geolocation.getCurrentPosition(
-      function(p){ S.pos=p; res(p); },
-      function(e){ rej(new Error(e.code===1?'ยังไม่ได้อนุญาตให้ใช้ตำแหน่ง':'อ่านพิกัดไม่สำเร็จ')); },
-      { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
-    );
+    var best=null, done=false, wid=null, tHard=null, denied=false;
+
+    function paint(){
+      if(done) return;
+      if(!best){ gpsShow('กำลังหาสัญญาณดาวเทียม…'); return; }
+      var a=Math.round(best.coords.accuracy);
+      if(a<=good) gpsShow('ได้สัญญาณแล้ว ±'+a+' ม.');
+      else gpsShow('กำลังหาสัญญาณ ±'+a+' ม. (ต้องการ ±'+good+' ม.)',
+                   'ใช้พิกัดนี้', function(){ finish(best); }, true);
+    }
+    function finish(p, err){
+      if(done) return; done=true;
+      if(wid!==null){ try{ navigator.geolocation.clearWatch(wid); }catch(e){} }
+      if(tHard) clearTimeout(tHard);
+      gpsHide();
+      if(p){ POSC.pos=p; POSC.at=Date.now(); S.pos=p; res(p); }
+      else  rej(err||new Error('อ่านพิกัดไม่สำเร็จ'));
+    }
+    function take(p){
+      if(!best || p.coords.accuracy < best.coords.accuracy) best=p;
+      paint();
+      if(best.coords.accuracy<=good) finish(best);
+    }
+
+    paint();
+    /* ค่าหยาบจากเสา/ไวไฟก่อน เพื่อให้มีอะไรใช้ทันทีถ้าดาวเทียมไม่มา */
+    try{
+      navigator.geolocation.getCurrentPosition(function(p){ if(!done) take(p); },
+        function(){}, { enableHighAccuracy:false, timeout:5000, maximumAge:60000 });
+    }catch(e){}
+
+    try{
+      wid = navigator.geolocation.watchPosition(take, function(e){
+        if(e.code===1){ denied=true; finish(null,new Error('ยังไม่ได้อนุญาตให้ใช้ตำแหน่ง — เปิดได้ที่ตั้งค่าเบราว์เซอร์')); }
+        /* สัญญาณขาดหรือหมดเวลา ไม่ต้องล้มทันที รอจนครบเวลาเผื่อได้ค่าทีหลัง */
+      }, { enableHighAccuracy:true, timeout:huntMs+5000, maximumAge:0 });
+    }catch(e){}
+
+    tHard = setTimeout(function(){
+      if(denied) return;
+      if(best) finish(best);
+      else finish(null, new Error('หาสัญญาณไม่ได้ใน '+Math.round(huntMs/1000)+' วินาที — ลองออกไปที่โล่งแล้วกดใหม่'));
+    }, huntMs);
   });
 }
 function distM(a1,o1,a2,o2){
@@ -1867,11 +1949,12 @@ function syncGapMs(){
   if(String(sh.inConfirmBy||'')) return 300000;        // ยืนยันแล้ว ไม่ต้องถี่
   var others = S.boot.othersOnDuty||[], today = S.boot.workDate||'';
   var waiting = others.some(function(o){ return o.workDate && o.workDate<today; });
-  if(waiting) return 20000;                            // กำลังรอคนส่งเวรยืนยัน
+  var fast = Math.max(15, gpsCfg('syncFastSec', 45)) * 1000;
+  if(waiting) return fast;                             // กำลังรอคนส่งเวรยืนยัน
   var endMs = sh.plannedEnd ? new Date(sh.plannedEnd).getTime() : 0;
   var plan  = (typeof myPlan==='function') ? myPlan() : null;
   var hoMin = plan ? plan.handoverMin : 15;
-  if(endMs && Math.abs((endMs-Date.now())/60000) <= hoMin+30) return 20000;  // ช่วงต่อเวร
+  if(endMs && Math.abs((endMs-Date.now())/60000) <= hoMin+30) return fast;   // ช่วงต่อเวร
   return 300000;
 }
 
@@ -1879,7 +1962,7 @@ function paintSync(err){
   var el=$('syncTxt'); if(!el) return;
   if(err){ el.textContent='อัปเดตไม่สำเร็จ — กด ↻ ลองใหม่'; return; }
   var t=NOTIF.lastLoad?new Date(NOTIF.lastLoad):null;
-  var fast=syncGapMs()<=20000;
+  var fast=syncGapMs()<300000;
   el.textContent = (t?('อัปเดตล่าสุด '+pad2(t.getHours())+':'+pad2(t.getMinutes())+' น.'):'ยังไม่ได้อัปเดต')
                  + (fast?' · กำลังเฝ้ารอการยืนยัน':'');
 }
@@ -2172,7 +2255,8 @@ function refreshGps(){
     var acc=Math.round(p.coords.accuracy);
     $('gpsDist').textContent='ห่างจุดนี้ '+d+' เมตร';
     $('gpsAcc').textContent='±'+acc+' ม.';
-    $('gpsAcc').className='pill '+(acc<=30?'ok':'warn');
+    var accOk=gpsCfg('maxAccuracyM',30);
+    $('gpsAcc').className='pill '+(acc<=accOk?'ok':'warn');
 
     // จุดอื่นที่ใกล้เคียงกัน
     var near=S.boot.checkpoints.map(function(c){
@@ -2183,7 +2267,7 @@ function refreshGps(){
     if(d>S.cp.radiusM)
       html+='<div class="banner bad">อยู่นอกรัศมี '+S.cp.radiusM+' ม. — เดินเข้าใกล้อีกหน่อย '+
             'หรือถ้าจำเป็นให้ใส่เหตุผลตอนบันทึก</div>';
-    else if(acc>30)
+    else if(acc>accOk)
       html+='<div class="banner warn">สัญญาณ GPS ไม่ค่อยดี (±'+acc+' ม.) ระบบจะติดธงไว้ให้หัวหน้าดู</div>';
     else if(near.length>1 && near[0].c.cpId===S.cp.cpId && (near[1].d-near[0].d)<10)
       html+='<div class="banner warn">จุดนี้กับ "'+near[1].c.name+'" อยู่ใกล้กันมาก โปรดตรวจว่าเลือกจุดถูก</div>';
