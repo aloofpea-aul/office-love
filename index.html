@@ -2393,18 +2393,29 @@ function shiftDate(days){
   var p=AR.date.split('-');
   var dt=new Date(+p[0], +p[1]-1, +p[2]);
   dt.setDate(dt.getDate()+days);
-  AR.date=ymd(dt); $('arDate').value=AR.date; loadAdmRounds();
+  AR.date=ymd(dt); $('arDate').value=AR.date; loadAdmRoundsSoon();
+}
+
+var AR_TIMER=null, AR_BUSY=false;
+/* หน่วงไว้ครึ่งวินาที กันช่องวันที่บนมือถือยิงโหลดรัวตอนหมุนเลือกวัน */
+function loadAdmRoundsSoon(){
+  if(AR_TIMER) clearTimeout(AR_TIMER);
+  AR_TIMER=setTimeout(loadAdmRounds, 500);
 }
 
 function loadAdmRounds(){
+  if(AR_BUSY) return;
+  AR_BUSY=true;
   $('arHead').textContent='กำลังโหลด…';
   $('arSum').innerHTML=''; $('arList').innerHTML='<div class="sk"></div><div class="sk" style="width:70%"></div>';
-  api('roundsDay',{workDate:AR.date}).then(function(j){
+  var want=AR.date;
+  api('roundsDay',{workDate:want}).then(function(j){
+    if(want!==AR.date) return;          // ผู้ใช้เปลี่ยนวันระหว่างรอ ทิ้งผลเก่าไป
     AR.data=j; AR.open={}; paintAdmRounds();
   }).catch(function(e){
     $('arHead').textContent='โหลดไม่สำเร็จ: '+(e.message||'');
     $('arList').innerHTML='';
-  });
+  }).then(function(){ AR_BUSY=false; });
 }
 
 function arTag(r){
@@ -2452,9 +2463,11 @@ function paintAdmRounds(){
   $('arList').innerHTML=h;
 
   Array.prototype.forEach.call($('arList').querySelectorAll('[data-ar]'),function(el){
-    el.onclick=function(){
+    el.onclick=function(e){
       var id=el.dataset.ar, box=$('arck_'+id);
       if(!box) return;
+      /* แตะในส่วนรายละเอียดที่กางอยู่ ไม่ให้เด้งไปปิดการ์ด */
+      if(e && box.contains(e.target)) return;
       sfxTap();
       if(!box.classList.contains('hide')){ box.classList.add('hide'); return; }
       var r=AR.data.rounds.filter(function(x){return x.roundId===id;})[0];
@@ -2482,7 +2495,10 @@ function arCheckinHtml(r){
   return h;
 }
 
+var GS_BUSY=false;
 function loadGuardScore(){
+  if(GS_BUSY) return;
+  GS_BUSY=true;
   var d=$('arDays').value||'30';
   $('arScore').innerHTML='<div class="sk"></div>';
   api('guardScore',{days:+d}).then(function(j){
@@ -2530,7 +2546,8 @@ function loadGuardScore(){
       h+='<p class="muted" style="font-size:12.5px;margin:10px 0 0">'+
          'มีอีก '+j.unattributed+' รอบที่ขาดแต่ไม่รู้ว่าใครอยู่เวร — เป็นข้อมูลเก่าก่อนระบบเริ่มบันทึกชื่อผู้อยู่เวร</p>';
     $('arScore').innerHTML=h;
-  }).catch(function(e){ $('arScore').innerHTML='<p class="muted">โหลดไม่สำเร็จ: '+(e.message||'')+'</p>'; });
+  }).catch(function(e){ $('arScore').innerHTML='<p class="muted">โหลดไม่สำเร็จ: '+(e.message||'')+'</p>'; })
+    .then(function(){ GS_BUSY=false; });
 }
 
 if($('btnBackAdmR'))   $('btnBackAdmR').onclick  =function(){ goBack(); };
@@ -2538,7 +2555,10 @@ if($('btnAdmRounds'))  $('btnAdmRounds').onclick =function(){ openAdmRounds(); }
 if($('btnAdmRounds2')) $('btnAdmRounds2').onclick=function(){ openAdmRounds(); };
 if($('arPrev')) $('arPrev').onclick=function(){ sfxTap(); shiftDate(-1); };
 if($('arNext')) $('arNext').onclick=function(){ sfxTap(); shiftDate(1); };
-if($('arDate')) $('arDate').onchange=function(){ AR.date=this.value; loadAdmRounds(); };
+if($('arDate')) $('arDate').onchange=function(){
+  if(!this.value) return;
+  AR.date=this.value; loadAdmRoundsSoon();
+};
 if($('arDays')) $('arDays').onchange=loadGuardScore;
 
 function paintChecklist(){
@@ -3210,8 +3230,9 @@ function goBack(){
   sfxTap();
   var c=SC_CUR;
   if(c==='scCheck'){ stopCamSafe(); show('scRound','back'); return; }
-  if(c==='scMe'||c==='scPts'||c==='scTeam'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'){
+  if(c==='scMe'||c==='scPts'||c==='scTeam'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'||c==='scAdmR'){
     stopCamSafe();
+    if(typeof AR_TIMER!=='undefined' && AR_TIMER){ clearTimeout(AR_TIMER); AR_TIMER=null; }
     show('scHome','back');       // เปลี่ยนหน้าก่อน
     loadHome();                  // แล้วค่อยดึงข้อมูลใหม่เบื้องหลัง
   }
