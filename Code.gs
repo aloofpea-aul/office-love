@@ -3606,7 +3606,7 @@ function apiGuardScore(me, req) {
     var name = String(r.dutyName || '');
     if (!id && dmap[wd]) { id = dmap[wd].id; name = name || dmap[wd].name; }
     if (!id) return;                       // ข้อมูลเก่าที่ไม่มีเจ้าของ นับแยกไม่ได้
-    if (!gid[id] && id !== 'admin') return;
+    if (!gid[id]) return;                  // นับเฉพาะ รปภ. ไม่เอาบัญชีผู้ดูแลหรือบัญชีทดสอบ
 
     var b = slot(id, name);
     b.total++;
@@ -3634,13 +3634,13 @@ function apiGuardScore(me, req) {
     if (u) forgot[u] = (forgot[u] || 0) + 1;
   });
 
+  var earlyGate = num(cfgGet('EARLY_OUT_GATE_MIN', 45), 45);
   readTable('Shifts').forEach(function (sf) {
     var wd = dstr(sf.workDate);
     if (!wd || wd < from) return;
     if (!sf.checkInAt) return;
     var id = String(sf.guardUserId || '');
-    if (!id) return;
-    if (!gid[id] && id !== 'admin') return;
+    if (!id || !gid[id]) return;           // นับเฉพาะ รปภ.
 
     var b = slot(id, String(sf.guardName || ''));
     b.sh = b.sh || { shifts: 0, hours: 0, onTime: 0, late: 0, lateMin: 0,
@@ -3657,8 +3657,9 @@ function apiGuardScore(me, req) {
     if (bool(sf.onTime)) x.onTime++;
     else { x.late++; x.lateMin += num(sf.lateMin, 0); }
 
+    // ส่งเวรก่อนเวลาจบกะไม่กี่นาทีเป็นเรื่องปกติของช่วงต่อเวร ไม่ใช่การออกก่อน
     var eo = num(sf.earlyOutMin, 0);
-    if (eo > 0) { x.earlyOut++; x.earlyMin += eo; }
+    if (eo > earlyGate) { x.earlyOut++; x.earlyMin += eo; }
 
     if (String(sf.contFrom || '')) x.cont++;
     if (bool(sf.emergency))        x.emergency++;
@@ -3875,7 +3876,9 @@ function seedStationMidCfg() {
     ['REMIND_LATE2_MIN', 45,
      'เตือนซ้ำครั้งที่สองเมื่อเลยเวลารอบมาแล้วกี่นาที — ครั้งสุดท้ายก่อนปิดรอบ'],
     ['MISS_STREAK_WARN', 2,
-     'ขาดติดกันกี่รอบในเวรเดียว ถึงจะแจ้งหัวหน้าทันที']
+     'ขาดติดกันกี่รอบในเวรเดียว ถึงจะแจ้งหัวหน้าทันที'],
+    ['EARLY_OUT_GATE_MIN', 45,
+     'ออกเวรก่อนเวลาจบกะเกินกี่นาที ถึงจะนับว่าออกก่อนเวลาจริง — ต่ำกว่านี้ถือเป็นช่วงต่อเวรปกติ']
   ].forEach(function (w) { if (!have[w[0]]) cfgSet(w[0], w[1], w[2]); });
 }
 

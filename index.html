@@ -2432,9 +2432,11 @@ function paintAdmRounds(){
   var h='';
   j.rounds.forEach(function(r){
     var time = r.flex ? (hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' ยืดหยุ่น') : (hhmm(r.schedAt)+' น.');
+    var pend = (r.status==='PENDING' || r.status==='OPEN');
     var walked = r.startedAt
       ? ('เดินจริง '+hhmm(r.startedAt)+(r.finishedAt?' – '+hhmm(r.finishedAt):' · ยังไม่จบ'))
-      : 'ไม่มีการลงเวลา';
+      : (pend ? ('เปิดรับ '+hhmm(r.openAt)+' – '+hhmm(r.closeAt)+' น.')
+              : 'ไม่มีการลงเวลา');
     var who = r.walkerId || r.dutyName || '';
     var mid = '';
     if(r.midResult==='OK')     mid=' <span class="pill ok">ยืนยันกลางทาง</span>';
@@ -2510,12 +2512,12 @@ function loadGuardScore(){
            '</div>';
         var bits=[];
         bits.push('เฉลี่ยผลัดละ '+x.avgHours+' ชม.');
-        if(x.late)      bits.push('สาย '+x.late+' ครั้ง (เฉลี่ย '+x.avgLate+' นาที)');
-        if(x.earlyOut)  bits.push('ออกก่อนเวลา '+x.earlyOut+' ครั้ง');
+        if(x.late)      bits.push('สาย '+x.late+' ครั้ง'+(x.avgLate?(' (เฉลี่ย '+x.avgLate+' นาที)'):''));
         if(x.cont)      bits.push('ควงกะ '+x.cont+' ครั้ง');
         if(x.forgotOut) bits.push('<span style="color:var(--bad)">ลืมกดออกเวร '+x.forgotOut+' ครั้ง</span>');
         if(x.emergency) bits.push('<span style="color:var(--bad)">ออกเวรฉุกเฉิน '+x.emergency+' ครั้ง</span>');
         if(x.noConfirm) bits.push('เข้าเวรโดยไม่มีผู้รับรอง '+x.noConfirm+' ครั้ง');
+        if(x.earlyOut)  bits.push('ออกก่อนเวลา '+x.earlyOut+' ครั้ง');
         if(x.stillOpen) bits.push('<span style="color:var(--warn)">ยังเปิดค้าง '+x.stillOpen+' ผลัด</span>');
         h+='<div class="muted" style="font-size:13px;margin-top:7px;line-height:1.75">'+
            bits.join(' · ')+'</div>';
