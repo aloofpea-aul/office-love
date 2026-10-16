@@ -1155,7 +1155,7 @@ function show(id, dir){
     b.classList.toggle('on', tab && i===SC_TAB[id]);
   });
 
-  window.scrollTo(0,0);
+  topNow();
   histSync();
 }
 
@@ -3366,15 +3366,33 @@ window.addEventListener('popstate', function(){
   goBack();
 });
 
+/** เลื่อนขึ้นบนสุดแบบไม่มีอนิเมชัน ใช้ตอนสลับหน้าและตอนกลับเข้าแอป */
+function topNow(){
+  try{ window.scrollTo(0,0); }catch(e){ }
+  try{ document.documentElement.scrollTop=0; document.body.scrollTop=0; }catch(e){}
+}
+
+/* หน้าที่แค่เปิดดู ไม่ได้แก้ข้อมูล — กลับมาแล้วไม่ต้องโหลดหน้าแรกใหม่ทั้งหน้า
+   เดิมเรียก loadHome ซึ่งสั่งเปลี่ยนหน้าซ้ำอีกครั้ง เลยเห็นเป็นอาการเด้ง */
+var READ_ONLY_SC = {scMe:1, scPts:1, scTeam:1, scHelp:1, scAdmR:1, scCall:1};
+
 function goBack(){
   sfxTap();
   var c=SC_CUR;
   if(c==='scCheck'){ stopCamSafe(); show('scRound','back'); return; }
-  if(c==='scMe'||c==='scPts'||c==='scTeam'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'||c==='scAdmR'||c==='scCall'){
+  if(READ_ONLY_SC[c]){
     stopCamSafe();
     if(typeof AR_TIMER!=='undefined' && AR_TIMER){ clearTimeout(AR_TIMER); AR_TIMER=null; }
+    show('scHome','back');
+    topNow();
+    if(typeof syncNow==='function') syncNow(false);   // อัปเดตข้อมูลเงียบ ๆ ไม่เปลี่ยนหน้าซ้ำ
+    return;
+  }
+  if(c==='scInsp'||c==='scRound'||c==='scInc'){
+    stopCamSafe();
     show('scHome','back');       // เปลี่ยนหน้าก่อน
-    loadHome();                  // แล้วค่อยดึงข้อมูลใหม่เบื้องหลัง
+    topNow();
+    loadHome();                  // หน้าพวกนี้แก้ข้อมูล ต้องโหลดใหม่ทั้งหน้า
   }
 }
 
@@ -3396,6 +3414,16 @@ $('btnSfx').onclick = sfxFlip;
 
 /* ========================= เริ่มทำงาน ========================= */
 (function init(){
+  /* iOS จะเลื่อนหน้าจอกลับไปตำแหน่งเดิมเองหลังกลับเข้าแอป
+     ซึ่งเป็นคนละหน้ากันแล้ว ทำให้ไปค้างอยู่กลางที่ว่าง — สั่งไม่ให้จำตำแหน่ง */
+  try{ if('scrollRestoration' in history) history.scrollRestoration='manual'; }catch(e){}
+  window.addEventListener('pageshow', function(ev){ if(ev.persisted) topNow(); });
+  /* กลับเข้าแอปแล้วหน้าจอไปค้างในที่ว่าง — ดึงขึ้นบนสุดให้ เฉพาะหน้าแรก
+     หน้าที่เป็นรายการยาว เช่น รอบเดินตรวจ ปล่อยให้อยู่ตำแหน่งเดิมตามปกติ */
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden) return;
+    if(SC_CUR==='scHome' || SC_CUR==='scCall') setTimeout(topNow, 60);
+  });
   if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
   qShow();
   var t='';
