@@ -51,13 +51,15 @@ var SCHEMA = {
   Shifts         : ['shiftId','workDate','guardUserId','guardName','checkInAt','checkInLat','checkInLng',
                     'checkOutAt','checkOutLat','checkOutLng','status','note',
                     'planId','shiftName','plannedStart','plannedEnd','lateMin','onTime','earlyOutMin',
-                    'handoverId','emergency','emergencyReason','contFrom','contTo'],
+                    'handoverId','emergency','emergencyReason','contFrom','contTo',
+                    'inConfirmBy','inConfirmAt'],
   ShiftPlan      : ['planId','name','startTime','endTime','graceEarlyMin','lateAfterMin','handoverMin',
                     'requireHandover','active','note'],
   Handovers      : ['hoId','workDate','ts','outUserId','outName','inUserId','inName','note','ackAt','status'],
   Rounds         : ['roundId','workDate','dayType','roundNo','schedAt','openAt','closeAt','flex',
                     'guardUserId','shiftId','status','startedAt','finishedAt','pointsDone','pointsTotal',
-                    'mode','cpCodes','minStayMin','midDueFrom','midDueTo','midResult'],
+                    'mode','cpCodes','minStayMin','midDueFrom','midDueTo','midResult',
+                    'dutyUserId','dutyName'],
   Checkins       : ['checkinId','roundId','cpId','userId','userName','ts','clientTs','lat','lng',
                     'accuracyM','distanceM','verifyResult','overrideReason','ua','phase','note'],
   CheckinAnswers : ['checkinId','itemId','value','remark'],
@@ -106,7 +108,7 @@ function _route(req) {
       case 'shiftOut'        : return apiShiftOut(auth(req), req);
       case 'shiftCont'       : return apiShiftCont(auth(req), req);
       case 'handoverAck'     : return apiHandoverAck(auth(req), req);
-      case 'pingNextShift'   : return apiPingNextShift(auth(req));
+      case 'pingNextShift'   : return apiPingNextShift(auth(req), req);
       case 'checkin'         : return apiCheckin(auth(req), req);
       case 'incident'        : return apiIncident(auth(req), req);
       case 'myHistory'       : return apiMyHistory(auth(req), req);
@@ -120,7 +122,10 @@ function _route(req) {
       case 'incidentUpdate'  : return apiIncidentUpdate(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'inspect'         : return apiInspect(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'redeemUpdate'    : return apiRedeemUpdate(auth(req, ['SUPERVISOR','ADMIN']), req);
+      case 'teamPoints'      : return apiTeamPoints(auth(req, ['SUPERVISOR','ADMIN']));
       case 'checkinDetail'   : return apiCheckinDetail(auth(req, ['SUPERVISOR','ADMIN']), req);
+      case 'roundsDay'       : return apiRoundsDay(auth(req, ['SUPERVISOR','ADMIN']), req);
+      case 'guardScore'      : return apiGuardScore(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'trend'           : return apiTrend(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'incidentDetail'  : return apiIncidentDetail(auth(req, ['SUPERVISOR','ADMIN']), req);
       case 'monthlyReport'   : return apiMonthlyReport(auth(req, ['SUPERVISOR','ADMIN']), req);
@@ -155,40 +160,88 @@ function err(msg)  { return { ok: false, error: String(msg) }; }
 /* โหมดทดสอบ — ตั้งครั้งเดียวตอนตรวจโทเคน แล้วทุกตารางจะวิ่งไปไฟล์ทดสอบเองทั้งระบบ
    เพราะโค้ดทุกส่วนเปิดฐานข้อมูลผ่าน db() จุดเดียว */
 var TEST_MODE = false;
-function testOn(v) { TEST_MODE = !!v; }
+function testOn(v) { TEST_MODE = !!v; dropCache(); }
 function isTest()  { return TEST_MODE; }
 
+/* ===========================================================================
+   แคชภายในคำขอเดียว — Apps Script เริ่มตัวแปรใหม่ทุกครั้งที่ถูกเรียก
+   จึงปลอดภัย ไม่มีข้อมูลข้ามคำขอ และทุกจุดที่เขียนชีตจะล้างแคชทันที
+   ก่อนหน้านี้ cfgGet อ่านตาราง Config ใหม่ทั้งตารางทุกครั้งที่ขอค่าหนึ่งค่า
+   และ db() สั่งเปิดไฟล์ชีตใหม่ทุกครั้งที่แตะตาราง — คำขอเดียวเปิดหลายสิบรอบ
+   =========================================================================== */
+var _SS = null, _SSK = '', _SH = {}, _TBL = {}, _PLT = {}, _PSS = null;
+
+function dropCache() { _SS = null; _SSK = ''; _SH = {}; _TBL = {}; _PLT = {}; _PSS = null; }
+/** ล้างแคชหลังเขียนชีต — เรียกชื่อตารางหรือไม่ใส่ก็ได้ ล้างทั้งหมดเพื่อความปลอดภัย */
+function cacheDrop(name) { _TBL = {}; _PLT = {}; }
+
 function db() {
-  if (TEST_MODE && CFG.TEST_DB_SHEET_ID) return SpreadsheetApp.openById(CFG.TEST_DB_SHEET_ID);
-  return CFG.DB_SHEET_ID ? SpreadsheetApp.openById(CFG.DB_SHEET_ID)
-                         : SpreadsheetApp.getActiveSpreadsheet();
+  var key = (TEST_MODE && CFG.TEST_DB_SHEET_ID) ? CFG.TEST_DB_SHEET_ID : (CFG.DB_SHEET_ID || '');
+  if (_SS && _SSK === key) return _SS;
+  _SSK = key;
+  _SH = {}; _TBL = {};
+  _SS = key ? SpreadsheetApp.openById(key) : SpreadsheetApp.getActiveSpreadsheet();
+  return _SS;
 }
 
 function sheetOf(name) {
-  var ss = db(), sh = ss.getSheetByName(name);
+  var ss = db();
+  var ck = _SSK + '|' + name;
+  if (_SH[ck]) return _SH[ck];
+  var sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
+    cacheDrop();
     if (SCHEMA[name]) sh.getRange(1, 1, 1, SCHEMA[name].length).setValues([SCHEMA[name]]);
   }
+  _SH[ck] = sh;
   return sh;
 }
 
-/** อ่านทั้งแท็บเป็น array ของ object */
+/** อ่านทั้งแท็บเป็น array ของ object — จำผลไว้ใช้ซ้ำภายในคำขอเดียวกัน */
 function readTable(name) {
+  var sh = sheetOf(name);
+  var ck = _SSK + '|' + name;
+  if (_TBL[ck]) return _TBL[ck];
+  var out = readRangeRows(sh, 0);
+  _TBL[ck] = out;
+  return out;
+}
+
+/**
+ * อ่านแค่ท้ายตาราง maxRows แถวล่าสุด — ใช้กับตารางที่โตไม่มีเพดาน เช่น Checkins
+ * เลข _row ยังเป็นเลขแถวจริงในชีต จึงแก้ไขแถวต่อได้ตามปกติ
+ */
+function readTableTail(name, maxRows) {
   var sh = sheetOf(name), last = sh.getLastRow();
   if (last < 2) return [];
+  var want = Math.max(1, num(maxRows, 600));
+  if (last - 1 <= want) return readTable(name);
+  var ck = _SSK + '|' + name + '#tail' + want;
+  if (_TBL[ck]) return _TBL[ck];
+  var out = readRangeRows(sh, last - want);
+  _TBL[ck] = out;
+  return out;
+}
+
+/** แปลงช่วงแถวเป็น array ของ object — skip = จำนวนแถวข้อมูลที่ข้ามจากบนสุด */
+function readRangeRows(sh, skip) {
+  var last = sh.getLastRow();
+  if (last < 2) return [];
   var w = Math.max(sh.getLastColumn(), 1);
-  var vals = sh.getRange(1, 1, last, w).getValues();
-  var head = vals[0].map(function (h) { return String(h).trim(); });
+  var head = sh.getRange(1, 1, 1, w).getValues()[0].map(function (h) { return String(h).trim(); });
+  var from = 2 + Math.max(0, skip);
+  if (from > last) return [];
+  var vals = sh.getRange(from, 1, last - from + 1, w).getValues();
   var out = [];
-  for (var i = 1; i < vals.length; i++) {
+  for (var i = 0; i < vals.length; i++) {
     var row = {}, empty = true;
     for (var c = 0; c < head.length; c++) {
       if (!head[c]) continue;
       row[head[c]] = vals[i][c];
       if (vals[i][c] !== '' && vals[i][c] !== null) empty = false;
     }
-    if (!empty) { row._row = i + 1; out.push(row); }
+    if (!empty) { row._row = from + i; out.push(row); }
   }
   return out;
 }
@@ -203,6 +256,7 @@ function ensureCols(tab, cols) {
   cols.forEach(function (c) { if (head.indexOf(c) < 0) add.push(c); });
   if (!add.length) return false;
   sh.getRange(1, head.length + 1, 1, add.length).setValues([add]);
+  cacheDrop(tab);
   SpreadsheetApp.flush();
   return true;
 }
@@ -210,11 +264,12 @@ function ensureCols(tab, cols) {
 /** คอลัมน์ที่ระบบรุ่นใหม่ต้องใช้ — เรียกตอนเปิดแอปและตอนสร้างรอบ */
 function ensureRoundCols() {
   ensureCols('RoundPlan', ['mode', 'cpCodes', 'minStayMin']);
-  ensureCols('Rounds',    ['mode', 'cpCodes', 'minStayMin', 'midDueFrom', 'midDueTo', 'midResult']);
+  ensureCols('Rounds',    ['mode', 'cpCodes', 'minStayMin', 'midDueFrom', 'midDueTo', 'midResult',
+                           'dutyUserId', 'dutyName']);
   ensureCols('Checkins',  ['phase', 'note']);
   ensureCols('Shifts',    ['planId', 'shiftName', 'plannedStart', 'plannedEnd', 'lateMin',
                            'onTime', 'earlyOutMin', 'handoverId', 'emergency', 'emergencyReason',
-                           'contFrom', 'contTo']);
+                           'contFrom', 'contTo', 'inConfirmBy', 'inConfirmAt']);
 }
 
 function appendRow(name, obj) {
@@ -223,6 +278,7 @@ function appendRow(name, obj) {
                .map(function (h) { return String(h).trim(); });
   var row = head.map(function (h) { return (obj[h] === undefined || obj[h] === null) ? '' : obj[h]; });
   sh.appendRow(row);
+  cacheDrop(name);
   return obj;
 }
 
@@ -235,6 +291,7 @@ function updateRow(name, rowIndex, obj) {
     if (head[c] && obj[head[c]] !== undefined) cur[c] = obj[head[c]];
   }
   sh.getRange(rowIndex, 1, 1, head.length).setValues([cur]);
+  cacheDrop(name);
 }
 
 function cfgGet(key, dflt) {
@@ -441,10 +498,19 @@ function pick(row, names) {
 
 /** ชีตที่เก็บผู้ใช้ — ถ้าไม่ได้ตั้ง PLATFORM_SHEET_ID ให้ใช้ชีตฐานข้อมูลเดียวกัน */
 function platformSS() {
-  return CFG.PLATFORM_SHEET_ID ? SpreadsheetApp.openById(CFG.PLATFORM_SHEET_ID) : db();
+  if (_PSS) return _PSS;
+  _PSS = CFG.PLATFORM_SHEET_ID ? SpreadsheetApp.openById(CFG.PLATFORM_SHEET_ID) : db();
+  return _PSS;
 }
 
 function readPlatform(tab) {
+  if (_PLT[tab]) return _PLT[tab];
+  var out = readPlatformRaw(tab);
+  _PLT[tab] = out;
+  return out;
+}
+
+function readPlatformRaw(tab) {
   var ss = platformSS();
   if (!ss) return [];
   var sh = ss.getSheetByName(tab);
@@ -506,6 +572,7 @@ function platformSet(rec, patch) {
   Object.keys(patch).forEach(function (k) { vals[rec.head.indexOf(k)] = patch[k]; });
   rec.sh.getRange(rec.row, 1, 1, w).setValues([vals]);
   SpreadsheetApp.flush();
+  cacheDrop();
 }
 
 /** ข้อมูลส่วนตัวที่ผู้ใช้แก้ไขเองได้ */
@@ -649,6 +716,7 @@ function migrateRoundPlan() {
   rows.filter(function (r) { return String(r.dayType) === 'WORKDAY'; })
       .sort(function (a, b) { return b._row - a._row; })
       .forEach(function (r) { sh.deleteRow(r._row); });
+  cacheDrop();
 
   WORKDAY_PLAN.forEach(function (x) {
     appendRow('RoundPlan', {
@@ -853,6 +921,7 @@ function tickRounds() {
   try { runOneTimeFixes(); } catch (e) { /* งานซ่อมข้อมูลพลาดไม่ควรทำให้รอบค้าง */ }
   try { runOneTimeFixes2(); } catch (e) { /* งานซ่อมกะค้างพลาดไม่ควรทำให้รอบค้าง */ }
   try { sweepMidWindows();  } catch (e) { /* ปิดช่วงยืนยันพลาดไม่ควรทำให้รอบค้าง */ }
+  try { sweepStaleShifts(); } catch (e) { /* ปิดกะค้างพลาดไม่ควรทำให้รอบค้าง */ }
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return;
@@ -861,6 +930,8 @@ function tickRounds() {
     var sh  = sheetOf('Rounds');
     var rows = readTable('Rounds');
     var onDuty = shiftDays();   // วันที่ไม่มีใครเข้าเวร = ไม่ต้องแจ้งเตือน
+    var dmap   = dutyMap();     // วันไหนใครอยู่เวร — ใช้ประทับเจ้าของรอบที่ขาด
+    var closed = [];
 
     rows.forEach(function (r) {
       var st = String(r.status);
@@ -869,12 +940,24 @@ function tickRounds() {
       var close = parseIso(r.closeAt);
       if (close.getTime() < now.getTime()) {
         var next = (num(r.pointsDone) > 0) ? 'PARTIAL' : 'MISSED';
-        updateRow('Rounds', r._row, { status: next, finishedAt: nowIso() });
-        if (onDuty[dstr(r.workDate)])
-          notifySupervisor('รอบ ' + r.roundNo + ' วันที่ ' + r.workDate + ' สถานะ ' +
+        var wd   = dstr(r.workDate);
+        var duty = dmap[wd] || null;
+        var patch = { status: next, finishedAt: nowIso() };
+        // ประทับชื่อคนที่อยู่เวร เพื่อให้รอบที่ขาดมีเจ้าของ ตรวจย้อนหลังได้
+        if (duty && !String(r.dutyUserId || '')) {
+          patch.dutyUserId = duty.id;
+          patch.dutyName   = duty.name;
+        }
+        updateRow('Rounds', r._row, patch);
+        closed.push({ wd: wd, no: num(r.roundNo), status: next,
+                      who: duty ? (duty.name || duty.id) : '' });
+        if (onDuty[wd])
+          notifySupervisor('รอบ ' + r.roundNo + ' วันที่ ' + wd +
+                           (duty && duty.name ? ' (' + duty.name + ')' : '') + ' สถานะ ' +
                            (next === 'MISSED' ? 'ขาด' : 'ไม่ครบจุด'), next === 'MISSED' ? 'HIGH' : 'MED');
       }
     });
+    if (closed.length) { try { warnMissStreak(closed); } catch (e) {} }
     SpreadsheetApp.flush();
     void sh;
   } finally { lock.releaseLock(); }
@@ -896,6 +979,60 @@ function shiftDays() {
   return d;
 }
 
+/**
+ * วันปฏิบัติงาน -> คนที่อยู่เวรวันนั้น
+ * ใช้ตอบคำถาม "รอบนี้ขาด แล้วใครเป็นคนอยู่เวร" ซึ่งเดิมระบบตอบไม่ได้เลย
+ * เพราะบันทึกเฉพาะคนที่เดินจริง ไม่ได้บันทึกคนที่ควรเดิน
+ */
+function dutyMap() {
+  var d = {};
+  readTable('Shifts').forEach(function (s) {
+    if (!s.checkInAt) return;
+    var wd = dstr(s.workDate);
+    if (!wd) return;
+    // กะที่เปิดทีหลังของวันเดียวกัน ถือเป็นเจ้าของเวรวันนั้น
+    if (!d[wd] || String(s.checkInAt) > d[wd].at)
+      d[wd] = { id: String(s.guardUserId || ''), name: String(s.guardName || ''),
+                at: String(s.checkInAt) };
+  });
+  return d;
+}
+
+/**
+ * ขาดติดกันตั้งแต่ 2 รอบในเวรเดียว = สัญญาณว่ามีอะไรผิดปกติ ไม่ใช่แค่ลืมรอบเดียว
+ * แจ้งหัวหน้าทันทีตอนที่ยังแก้ทัน ไม่ใช่ไปรู้ตอนสิ้นเดือน — ส่งวันละครั้งต่อเวร
+ */
+function warnMissStreak(closed) {
+  var needed = Math.max(2, num(cfgGet('MISS_STREAK_WARN', 2), 2));
+  var days = {};
+  closed.forEach(function (c) { if (c.status === 'MISSED') days[c.wd] = c.who; });
+
+  var already = {};
+  readTable('Notifications').forEach(function (n) {
+    if (String(n.type) === 'MISS_STREAK') already[String(n.refId)] = true;
+  });
+
+  Object.keys(days).forEach(function (wd) {
+    if (already[wd]) return;
+    var list = readTable('Rounds').filter(function (r) {
+      return dstr(r.workDate) === wd && String(r.mode || '').toUpperCase() !== 'FREE';
+    }).sort(function (a, b) { return String(a.schedAt) < String(b.schedAt) ? -1 : 1; });
+
+    var run = 0, worst = 0;
+    list.forEach(function (r) {
+      if (String(r.status) === 'MISSED') { run++; if (run > worst) worst = run; }
+      else if (String(r.status) === 'COMPLETE' || String(r.status) === 'PARTIAL') run = 0;
+    });
+    if (worst < needed) return;
+
+    var miss = list.filter(function (r) { return String(r.status) === 'MISSED'; }).length;
+    var done = list.filter(function (r) { return String(r.status) === 'COMPLETE'; }).length;
+    notify('⚠️ เวรวันที่ ' + wd + (days[wd] ? ' (' + days[wd] + ')' : '') +
+           ' ขาดติดกัน ' + worst + ' รอบ\nสรุปถึงตอนนี้ ครบ ' + done + ' · ขาด ' + miss +
+           ' จาก ' + list.length + ' รอบ', 'HIGH', 'MISS_STREAK', wd, 'SUPERVISOR');
+  });
+}
+
 function remindRounds() {
   if (String(cfgGet('NOTIFY_CHANNEL', 'WEBEX')).toUpperCase() === 'OFF') return 0;
   var lock = LockService.getScriptLock();
@@ -904,11 +1041,14 @@ function remindRounds() {
     var now    = new Date().getTime();
     var before = num(cfgGet('REMIND_BEFORE_MIN', 10), 10) * 60000;
     var lateAf = num(cfgGet('REMIND_LATE_MIN', 20), 20) * 60000;
+    var lateAf2 = Math.max(num(cfgGet('REMIND_LATE_MIN', 20), 20) + 5,
+                           num(cfgGet('REMIND_LATE2_MIN', 45), 45)) * 60000;
 
     var already = {};
     readTable('Notifications').forEach(function (n) {
       var t = String(n.type);
-      if (t === 'ROUND_REMIND' || t === 'ROUND_LATE') already[t + '|' + String(n.refId)] = true;
+      if (t === 'ROUND_REMIND' || t === 'ROUND_LATE' || t === 'ROUND_LATE2')
+        already[t + '|' + String(n.refId)] = true;
     });
 
     // เตือนเฉพาะวันที่ รปภ. กดลงเวลาเข้าเวรแล้วเท่านั้น
@@ -945,6 +1085,11 @@ function remindRounds() {
         if (notify('⚠️ เลยเวลารอบที่ ' + no + ' (' + hhmm + ' น.) มาแล้ว ' + late +
                    ' นาที ยังไม่มีการเช็คอิน — ปิดรอบ ' + fmt(close, 'HH:mm') + ' น.',
                    'HIGH', 'ROUND_LATE', id, 'GUARD')) sent++;
+      } else if (now >= sched.getTime() + lateAf2 && !already['ROUND_LATE2|' + id]) {
+        // เตือนซ้ำครั้งที่สอง ใกล้ปิดรอบแล้ว — ครั้งสุดท้ายที่ยังเดินทัน
+        var left = Math.max(1, Math.round((close.getTime() - now) / 60000));
+        if (notify('🔴 รอบที่ ' + no + ' (' + hhmm + ' น.) เหลือเวลาอีก ' + left +
+                   ' นาทีก่อนปิดรอบ ยังไม่มีการเช็คอิน', 'HIGH', 'ROUND_LATE2', id, 'GUARD')) sent++;
       }
     });
     return sent;
@@ -983,7 +1128,9 @@ function apiBootstrap(me) {
                type: String(i.type || 'OK_NG'), required: bool(i.required), orderNo: num(i.orderNo) };
     });
 
-  var allCk = readTable('Checkins');
+  // ตาราง Checkins โตวันละ 30-50 แถวไม่มีเพดาน หน้าแรกใช้แค่รอบของวันนี้
+  // จึงอ่านเฉพาะท้ายตาราง ทำให้เปิดแอปไม่ช้าลงตามอายุการใช้งาน
+  var allCk = readTableTail('Checkins', num(cfgGet('BOOT_CHECKIN_TAIL', 600), 600));
   var stMap = {};   // roundId -> { inAt, midAt, outAt } ของรอบประจำจุด
   allCk.forEach(function (c) {
     var ph = String(c.phase || '').toUpperCase();
@@ -1037,7 +1184,19 @@ function apiBootstrap(me) {
                 lateMin: num(s.lateMin), onTime: !!String(s.onTime || ''),
                 contRound: contDepth(allShifts, s),
                 maxCont: num(cfgGet('MAX_CONT_SHIFT', 2), 2),
-                contOpenAt: isNaN(_end) ? '' : toIso(new Date(_end - _hm * 60000)) };
+                contOpenAt: isNaN(_end) ? '' : toIso(new Date(_end - _hm * 60000)),
+                inConfirmBy: String(s.inConfirmBy || ''),
+                inConfirmAt: String(s.inConfirmAt || ''),
+                inConfirmName: (function () {
+                  var u = String(s.inConfirmBy || '');
+                  if (!u || u === 'SELF' || u === 'AUTO') return '';
+                  var nm = '';
+                  allShifts.forEach(function (x) {
+                    if (String(x.guardUserId) === u && x.guardName) nm = String(x.guardName);
+                  });
+                  return nm || u;
+                })(),
+                contFrom: String(s.contFrom || '') };
     }
   });
 
@@ -1046,7 +1205,8 @@ function apiBootstrap(me) {
     return s.checkInAt && !s.checkOutAt && String(s.guardUserId) !== me.userId;
   }).map(function (s) {
     return { userId: String(s.guardUserId), name: String(s.guardName || ''),
-             checkInAt: String(s.checkInAt), shiftName: String(s.shiftName || '') };
+             checkInAt: String(s.checkInAt), shiftName: String(s.shiftName || ''),
+             workDate: dstr(s.workDate) };
   });
 
   // เรื่องคงค้างที่เพิ่งรับเวรมาและยังไม่กดรับทราบ
@@ -1068,6 +1228,13 @@ function apiBootstrap(me) {
                        exp: toIso(new Date(Date.now() + CFG.TOKEN_TTL_DAYS * 86400000)) }),
     test: isTest(),
     remindBeforeMin: num(cfgGet('REMIND_BEFORE_MIN', 10), 10),
+    // จังหวะที่หน้าแอปจะถามข้อมูลใหม่ช่วงรอยืนยันรับเวร (วินาที) ปรับได้ในหน้าผู้ดูแล
+    syncFastSec: num(cfgGet('SYNC_FAST_SEC', 45), 45),
+    maxAccuracyM: num(cfgGet('MAX_ACCURACY_M', 30), 30),
+    // เกณฑ์การหาสัญญาณ GPS ของหน้าแอป — ปรับได้ในหน้าผู้ดูแลโดยไม่ต้องแก้โค้ด
+    gpsGoodM:    num(cfgGet('GPS_GOOD_M', 60), 60),
+    gpsHuntSec:  num(cfgGet('GPS_HUNT_SEC', 20), 20),
+    gpsReuseSec: num(cfgGet('GPS_REUSE_SEC', 45), 45),
     shiftPoint: (function () {
       var la = num(cfgGet('SHIFT_LAT', 0)), ln = num(cfgGet('SHIFT_LNG', 0));
       return (la && ln) ? { lat: la, lng: ln, radiusM: num(cfgGet('SHIFT_RADIUS_M', 20), 20) } : null;
@@ -1320,12 +1487,14 @@ function apiSupervisorBoard(me, req) {
                earlyOutMin: num(s.earlyOutMin),
                handoverId: String(s.handoverId || ''),
                contRound: contDepth(allSh, s), contTo: String(s.contTo || ''),
+               inConfirmBy: String(s.inConfirmBy || ''), inConfirmAt: String(s.inConfirmAt || ''),
                emergency: bool(s.emergency), emergencyReason: String(s.emergencyReason || '') };
     });
 
   var handovers = readTable('Handovers').filter(function (h) { return dstr(h.workDate) === workDate; })
     .map(function (h) {
       return { hoId: String(h.hoId), ts: String(h.ts),
+               outUserId: String(h.outUserId || ''), inUserId: String(h.inUserId || ''),
                outName: String(h.outName || ''), inName: String(h.inName || ''),
                note: String(h.note || ''), ackAt: String(h.ackAt || ''), status: String(h.status || '') };
     }).sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
@@ -1788,7 +1957,7 @@ function apiSaveHoliday(me, req) {
   });
   var rec = { date: d, name: String(req.item.name || ''), kind: String(req.item.kind || 'ราชการ') };
   if (req.remove) {
-    if (found) sheetOf('Holidays').deleteRow(found._row);
+    if (found) { sheetOf('Holidays').deleteRow(found._row); cacheDrop(); }
     return ok({ removed: true });
   }
   if (found) updateRow('Holidays', found._row, rec); else appendRow('Holidays', rec);
@@ -2020,6 +2189,7 @@ function setupSheets() {
     var sh = sheetOf(name);
     var head = SCHEMA[name];
     sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
+  cacheDrop();
     sh.setFrozenRows(1);
     sh.getRange(1, 1, sh.getMaxRows(), head.length).setNumberFormat('@');
   }
@@ -2211,6 +2381,7 @@ function fixAndRebuild() {
   }
   var sh = sheetOf('Rounds');
   if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
+  cacheDrop();
   dailyGenerateRounds();
   SpreadsheetApp.flush();
   Logger.log('ซ่อมเรียบร้อย — สร้างรอบใหม่แล้ว');
@@ -2271,6 +2442,7 @@ function repairRoundPlan() {
     return [r[0], r[1], r[2], hhmmOf(r[3]), hhmmOf(r[7]), num(r[4], 15), num(r[5], 60), 'TRUE'];
   });
   sh.getRange(2, 1, n, 8).setNumberFormat('@').setValues(out);
+  cacheDrop();
   SpreadsheetApp.flush();
   Logger.log('ซ่อม RoundPlan แล้ว ' + n + ' แถว — รัน fixAndRebuild() ต่อ');
   return n;
@@ -2572,6 +2744,7 @@ function rebuildPoints() {
         return head.map(function (h) { return (s[h] === undefined || s[h] === null) ? '' : s[h]; });
       });
       sh.getRange(2, 1, rowsOut.length, head.length).setValues(rowsOut);
+    cacheDrop();
     }
     SpreadsheetApp.flush();
     return 'คำนวณแต้มแล้ว ' + out.length + ' แถว';
@@ -2625,11 +2798,11 @@ function addPointsAdjust() {
 
 // ระดับ — อิงจากอัตราจริง ~2,500 แต้ม/คน/เดือน ไต่ถึงระดับสูงสุดพอดีครบ 1 ปีสัญญา
 var PT_LEVELS = [
-  { min: 0,     name: 'ยามใหม่' },        // เริ่มต้น
-  { min: 2800,  name: 'ยามชำนาญ' },       // ~1 เดือน
-  { min: 9000,  name: 'ยามอาวุโส' },      // ~3 เดือน
-  { min: 20000, name: 'ยามผู้พิทักษ์' },  // ~7 เดือน
-  { min: 34000, name: 'ยามตำนาน' }        // ~12 เดือน
+  { min: 0,     name: 'รปภ. ใหม่' },        // เริ่มต้น
+  { min: 2800,  name: 'รปภ. ชำนาญ' },       // ~1 เดือน
+  { min: 9000,  name: 'รปภ. อาวุโส' },      // ~3 เดือน
+  { min: 20000, name: 'รปภ. ผู้พิทักษ์' },  // ~7 เดือน
+  { min: 34000, name: 'รปภ. ตำนาน' }        // ~12 เดือน
 ];
 
 function levelOf(total) {
@@ -2780,7 +2953,7 @@ var PT_BADGES = [
     how: 'รายงานเหตุผิดปกติพร้อมภาพครบ 10 ครั้ง' },
   { id: 'ontime', icon: '⏱',  name: 'ตรงเวลา',               need: 20,  unit: 'ผลัด',
     how: 'ลงเวลาเข้าเวรตรงเวลาติดต่อกัน 20 ผลัด' },
-  { id: 'iron',   icon: '🛡',  name: 'ยามเหล็ก',              need: 100, unit: 'ผลัด',
+  { id: 'iron',   icon: '🛡',  name: 'รปภ. เหล็ก',              need: 100, unit: 'ผลัด',
     how: 'ทำผลัดสมบูรณ์ครบ 100 ผลัด' },
   { id: 'star',   icon: '🥇', name: 'ยอดเยี่ยมประจำเดือน',   need: 1,   unit: 'เดือน',
     how: 'ทำแต้มถึงเป้าของเดือนนั้น' }
@@ -2948,6 +3121,7 @@ function seedRewards() {
 
   var sh = sheetOf('Rewards');
   if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
+  cacheDrop();
   REWARD_CATALOG.forEach(function (x) {
     appendRow('Rewards', { rewardId: uid(), name: x[0], cost: x[1], stock: '',
                            note: x[2], active: 'TRUE' });
@@ -3169,6 +3343,12 @@ function openShiftsNow() {
   });
 }
 
+/** เวรที่เปิดอยู่ "จริง" ของวันทำงานนี้ขึ้นไป — กะค้างจากวันก่อนไม่นับ
+    ใช้ตัดสินว่ามีผู้รับเวรมาถึงแล้วหรือยัง และกันกะค้างไปบล็อกการควงกะ */
+function liveOpenShifts(workDate) {
+  return openShiftsNow().filter(function (s) { return dstr(s.workDate) >= workDate; });
+}
+
 // ---------------------------------------------------------------------------
 // เข้าเวร
 // ---------------------------------------------------------------------------
@@ -3206,7 +3386,8 @@ function apiShiftIn(me, req) {
     planId: plan ? plan.planId : '', shiftName: plan ? plan.name : '',
     plannedStart: plan ? plan.startAt : '', plannedEnd: plan ? plan.endAt : '',
     lateMin: lateMin, onTime: onTime, earlyOutMin: '',
-    handoverId: '', emergency: '', emergencyReason: ''
+    handoverId: '', emergency: '', emergencyReason: '',
+    contFrom: '', contTo: '', inConfirmBy: '', inConfirmAt: ''
   });
   audit(me.userId, 'SHIFT_IN', 'SHIFT', id, null, { plan: plan ? plan.name : '', lateMin: lateMin });
 
@@ -3251,15 +3432,22 @@ function apiShiftOut(me, req) {
   });
 
   var guardIds = patrolGuardIds();
+  var myWd = dstr(mine.workDate);
   var taker = null;
   rows.forEach(function (s) {
     if (String(s.guardUserId) === me.userId) return;
     if (!s.checkInAt || s.checkOutAt) return;
     if (!guardIds[String(s.guardUserId)]) return;   // ข้ามบัญชี VIP / แอดมิน / หัวหน้าเวร
+    if (dstr(s.workDate) < myWd) return;            // กะค้างของคนอื่นไม่ใช่ผู้รับเวร
     if (!taker || String(s.checkInAt) > String(taker.checkInAt)) taker = s;
   });
 
-  var emergency = !!req.emergency;
+  // ลูปยืนยันสองทาง — ผู้ส่งเวรต้องรับรองว่าผู้รับเวรมาถึงจริง
+  if (taker && !emergencyWanted(req) && !bool(req.confirmArrival))
+    return err('CONFIRM_REQUIRED|กรุณาติ๊กยืนยันว่า ' + String(taker.guardName || 'ผู้รับเวร') +
+               ' มาถึงและรับเวรแล้วจริง');
+
+  var emergency = emergencyWanted(req);
   if (needHo && !taker && !emergency)
     return err('NO_TAKER|ยังไม่มีผู้รับเวร — รอให้คนกะถัดไปกดเข้าเวรก่อน');
 
@@ -3277,7 +3465,10 @@ function apiShiftOut(me, req) {
       inUserId: String(taker.guardUserId), inName: String(taker.guardName || ''),
       note: String(req.handoverNote || ''), ackAt: '', status: 'PENDING'
     });
-    updateRow('Shifts', taker._row, { handoverId: hoId });
+    // ประทับการรับรองลงแถวเข้าเวรของผู้รับเวร — นี่คือหัวใจของลูปยืนยันสองทาง
+    updateRow('Shifts', taker._row, {
+      handoverId: hoId, inConfirmBy: me.userId, inConfirmAt: now
+    });
   }
 
   var endMs  = parseIso(mine.plannedEnd).getTime();
@@ -3304,9 +3495,193 @@ function apiShiftOut(me, req) {
                      ' เรียบร้อย เวลา ' + fmt(new Date(), 'HH:mm') + ' น.', 'LOW');
   }
 
+  var sum = shiftSummary(dstr(mine.workDate));
+  if (sum.total) {
+    notifySupervisor(me.name + ' จบเวรวันที่ ' + dstr(mine.workDate) + ' — ครบ ' + sum.done +
+                     ' · ไม่ครบจุด ' + sum.partial + ' · ขาด ' + sum.missed +
+                     ' จาก ' + sum.total + ' รอบ', sum.missed > 0 ? 'MED' : 'LOW');
+  }
+
   return ok({ shiftId: String(mine.shiftId), distanceM: chk ? chk.dist : -1,
               handoverTo: taker ? String(taker.guardName || '') : '',
-              emergency: !!(emergency && !taker), earlyOutMin: early });
+              emergency: !!(emergency && !taker), earlyOutMin: early,
+              summary: sum });
+}
+
+/** สรุปผลรอบเดินตรวจของวันปฏิบัติงานหนึ่ง — ใช้ทั้งตอนจบเวรและหน้าผู้ดูแล */
+function shiftSummary(workDate) {
+  var out = { total: 0, done: 0, missed: 0, partial: 0, open: 0, missedNo: [] };
+  readTable('Rounds').forEach(function (r) {
+    if (dstr(r.workDate) !== workDate) return;
+    if (String(r.mode || '').toUpperCase() === 'FREE') return;
+    out.total++;
+    var st = String(r.status);
+    if (st === 'COMPLETE') out.done++;
+    else if (st === 'MISSED')  { out.missed++;  out.missedNo.push(num(r.roundNo)); }
+    else if (st === 'PARTIAL') { out.partial++; out.missedNo.push(num(r.roundNo)); }
+    else out.open++;
+  });
+  out.missedNo.sort(function (a, b) { return a - b; });
+  return out;
+}
+
+/**
+ * รอบเดินตรวจของวันที่เลือก พร้อมเวลาเดินจริงและจุดที่ลง
+ * มีไว้ให้ผู้ดูแล/หัวหน้า เปิดดูได้จากหน้าแรกเลย ไม่ต้องเข้าหน้ารายงาน
+ */
+function apiRoundsDay(me, req) {
+  ensureRoundCols();
+  var wd = dstr(req && req.workDate) || workDateOf(new Date());
+  var dmap = dutyMap(), duty = dmap[wd] || null;
+
+  var ckByRound = {};
+  readTableTail('Checkins', num(cfgGet('BOOT_CHECKIN_TAIL', 600), 600)).forEach(function (c) {
+    var k = String(c.roundId);
+    (ckByRound[k] = ckByRound[k] || []).push(c);
+  });
+
+  var cpName = {};
+  readTable('Checkpoints').forEach(function (c) {
+    cpName[String(c.cpId)] = String(c.code || '') + ' · ' + String(c.name || '');
+  });
+
+  var rounds = readTable('Rounds').filter(function (r) { return dstr(r.workDate) === wd; })
+    .sort(function (a, b) { return String(a.schedAt) < String(b.schedAt) ? -1 : 1; })
+    .map(function (r) {
+      var cks = (ckByRound[String(r.roundId)] || []).sort(function (a, b) {
+        return String(a.ts) < String(b.ts) ? -1 : 1;
+      }).map(function (c) {
+        return { cp: cpName[String(c.cpId)] || String(c.cpId), ts: String(c.ts),
+                 phase: String(c.phase || ''), distanceM: num(c.distanceM),
+                 accuracyM: num(c.accuracyM), verify: String(c.verifyResult || ''),
+                 reason: String(c.overrideReason || '') };
+      });
+      var who = String(r.guardUserId || '') ? String(r.guardUserId) : '';
+      return {
+        roundId: String(r.roundId), roundNo: num(r.roundNo), status: String(r.status),
+        mode: String(r.mode || 'PATROL').toUpperCase(), flex: bool(r.flex),
+        schedAt: String(r.schedAt), openAt: String(r.openAt), closeAt: String(r.closeAt),
+        startedAt: String(r.startedAt || ''), finishedAt: String(r.finishedAt || ''),
+        pointsDone: num(r.pointsDone), pointsTotal: num(r.pointsTotal),
+        midDueFrom: String(r.midDueFrom || ''), midDueTo: String(r.midDueTo || ''),
+        midResult: String(r.midResult || ''),
+        walkerId: who,
+        dutyName: String(r.dutyName || '') || (duty ? duty.name : ''),
+        checkins: cks
+      };
+    });
+
+  return ok({ workDate: wd, dayType: isHoliday(wd) ? 'HOLIDAY' : 'WORKDAY',
+              duty: duty ? { userId: duty.id, name: duty.name, checkInAt: duty.at } : null,
+              summary: shiftSummary(wd), rounds: rounds });
+}
+
+/**
+ * สรุปรายคนย้อนหลัง N วัน — ครบ / ไม่ครบจุด / ขาด
+ * รอบที่ขาดจะนับให้คนที่อยู่เวรวันนั้น (คอลัมน์ dutyName) ซึ่งเริ่มบันทึกตั้งแต่รุ่นนี้
+ */
+function apiGuardScore(me, req) {
+  ensureRoundCols();
+  var days = Math.min(120, Math.max(1, num(req && req.days, 30)));
+  var from = fmt(new Date(Date.now() - days * 86400000), 'yyyy-MM-dd');
+  var dmap = dutyMap();
+  var gid  = patrolGuardIds();
+
+  var byUser = {};
+  function slot(id, name) {
+    if (!byUser[id]) byUser[id] = { userId: id, name: name || id,
+                                    done: 0, partial: 0, missed: 0, total: 0, noOwner: 0 };
+    if (name && byUser[id].name === id) byUser[id].name = name;
+    return byUser[id];
+  }
+
+  readTable('Rounds').forEach(function (r) {
+    var wd = dstr(r.workDate);
+    if (!wd || wd < from) return;
+    if (String(r.mode || '').toUpperCase() === 'FREE') return;
+    var st = String(r.status);
+    if (st !== 'COMPLETE' && st !== 'PARTIAL' && st !== 'MISSED') return;
+
+    var id   = String(r.guardUserId || r.dutyUserId || '');
+    var name = String(r.dutyName || '');
+    if (!id && dmap[wd]) { id = dmap[wd].id; name = name || dmap[wd].name; }
+    if (!id) return;                       // ข้อมูลเก่าที่ไม่มีเจ้าของ นับแยกไม่ได้
+    if (!gid[id] && id !== 'admin') return;
+
+    var b = slot(id, name);
+    b.total++;
+    if (st === 'COMPLETE') b.done++;
+    else if (st === 'PARTIAL') b.partial++;
+    else b.missed++;
+  });
+
+  var oldNoOwner = 0;
+  readTable('Rounds').forEach(function (r) {
+    var wd = dstr(r.workDate);
+    if (!wd || wd < from) return;
+    if (String(r.status) !== 'MISSED') return;
+    if (!String(r.guardUserId || r.dutyUserId || '') && !dmap[wd]) oldNoOwner++;
+  });
+
+  // ── สถิติการเข้าเวร ─────────────────────────────────────────────────
+  // ใครลืมกดออกเวร ดูจากใบส่งเวรที่ระบบปิดให้อัตโนมัติ (status = AUTO)
+  var forgot = {};
+  readTable('Handovers').forEach(function (h) {
+    if (String(h.status) !== 'AUTO') return;
+    var wd = dstr(h.workDate);
+    if (wd && wd < from) return;
+    var u = String(h.outUserId || '');
+    if (u) forgot[u] = (forgot[u] || 0) + 1;
+  });
+
+  readTable('Shifts').forEach(function (sf) {
+    var wd = dstr(sf.workDate);
+    if (!wd || wd < from) return;
+    if (!sf.checkInAt) return;
+    var id = String(sf.guardUserId || '');
+    if (!id) return;
+    if (!gid[id] && id !== 'admin') return;
+
+    var b = slot(id, String(sf.guardName || ''));
+    b.sh = b.sh || { shifts: 0, hours: 0, onTime: 0, late: 0, lateMin: 0,
+                     earlyOut: 0, earlyMin: 0, cont: 0, emergency: 0,
+                     forgotOut: 0, stillOpen: 0, noConfirm: 0 };
+    var x = b.sh;
+    x.shifts++;
+
+    var inMs  = parseIso(sf.checkInAt).getTime();
+    var outMs = sf.checkOutAt ? parseIso(sf.checkOutAt).getTime() : 0;
+    if (outMs && !isNaN(inMs) && outMs > inMs) x.hours += (outMs - inMs) / 3600000;
+    else if (!sf.checkOutAt) x.stillOpen++;
+
+    if (bool(sf.onTime)) x.onTime++;
+    else { x.late++; x.lateMin += num(sf.lateMin, 0); }
+
+    var eo = num(sf.earlyOutMin, 0);
+    if (eo > 0) { x.earlyOut++; x.earlyMin += eo; }
+
+    if (String(sf.contFrom || '')) x.cont++;
+    if (bool(sf.emergency))        x.emergency++;
+
+    // เข้าเวรโดยไม่มีใครรับรอง = ผู้ส่งเวรไม่ได้กดออกเวรให้ หรือระบบปิดให้เอง
+    var cf = String(sf.inConfirmBy || '');
+    if (!cf || cf === 'AUTO') x.noConfirm++;
+  });
+
+  var list = Object.keys(byUser).map(function (k) {
+    var b = byUser[k];
+    b.pct = b.total ? Math.round(b.done * 1000 / b.total) / 10 : 0;
+    if (b.sh) {
+      b.sh.forgotOut = forgot[b.userId] || 0;
+      b.sh.hours     = Math.round(b.sh.hours * 10) / 10;
+      b.sh.avgHours  = b.sh.shifts ? Math.round(b.sh.hours * 10 / b.sh.shifts) / 10 : 0;
+      b.sh.onTimePct = b.sh.shifts ? Math.round(b.sh.onTime * 1000 / b.sh.shifts) / 10 : 0;
+      b.sh.avgLate   = b.sh.late ? Math.round(b.sh.lateMin / b.sh.late) : 0;
+    }
+    return b;
+  }).sort(function (a, b) { return (b.sh ? b.sh.shifts : 0) - (a.sh ? a.sh.shifts : 0); });
+
+  return ok({ days: days, from: from, guards: list, unattributed: oldNoOwner });
 }
 
 /** คนรับเวรกดรับทราบเรื่องคงค้าง */
@@ -3321,10 +3696,17 @@ function apiHandoverAck(me, req) {
 }
 
 /** ปุ่มเตือนคนกะถัดไป */
-function apiPingNextShift(me) {
-  notify('⏰ ' + me.name + ' ยังรอผู้รับเวรอยู่ที่ ' + fmt(new Date(), 'HH:mm') +
-         ' น. — ท่านใดรับกะถัดไป กรุณากดลงเวลาเข้าเวรด้วยครับ',
-         'MED', 'SHIFT_PING', '', 'ALL');
+function apiPingNextShift(me, req) {
+  var dir = String((req && req.dir) || 'next').toLowerCase();
+  if (dir === 'prev') {
+    notify('⏰ ' + me.name + ' ลงเวลาเข้าเวรแล้วเมื่อ ' + fmt(new Date(), 'HH:mm') +
+           ' น. — ผู้ที่ยังไม่กดออกเวร กรุณากดออกเวรเพื่อยืนยันการรับเวรด้วยครับ',
+           'MED', 'SHIFT_PING', '', 'ALL');
+  } else {
+    notify('⏰ ' + me.name + ' ยังรอผู้รับเวรอยู่ที่ ' + fmt(new Date(), 'HH:mm') +
+           ' น. — ท่านใดรับกะถัดไป กรุณากดลงเวลาเข้าเวรด้วยครับ',
+           'MED', 'SHIFT_PING', '', 'ALL');
+  }
   return ok({});
 }
 
@@ -3455,9 +3837,9 @@ function fixStaleShifts() {
 
 // ===========================================================================
 // ยืนยันตำแหน่งกลางทาง ของรอบประจำจุด
-//   กันยามกดเริ่มแล้วเดินออกนอกพื้นที่ โดยไม่ต้องให้เปิดหน้าจอทิ้งไว้
-//   ตอนกดเริ่ม ระบบสุ่มช่วงเวลากว้าง STATION_MID_WINDOW_MIN นาที แล้วบอกยามทันที
-//   ยามกลับมาเปิดแอปแตะยืนยันในช่วงนั้น ใช้เวลาไม่กี่วินาที
+//   กัน รปภ. กดเริ่มแล้วเดินออกนอกพื้นที่ โดยไม่ต้องให้เปิดหน้าจอทิ้งไว้
+//   ตอนกดเริ่ม ระบบสุ่มช่วงเวลากว้าง STATION_MID_WINDOW_MIN นาที แล้วบอก รปภ.ทันที
+//   รปภ. กลับมาเปิดแอปแตะยืนยันในช่วงนั้น ใช้เวลาไม่กี่วินาที
 // ===========================================================================
 
 /** ใส่ค่าตั้งต้นลง Config ครั้งแรก — เริ่มที่ 0 คือยังปิดไว้ รอหน้าแอปพร้อมก่อน */
@@ -3473,8 +3855,60 @@ function seedStationMidCfg() {
     ['STATION_MID_ENFORCE', 'FALSE',
      'TRUE = ขาดการยืนยันแล้วตัดโบนัสประจำจุด / FALSE = บันทึกอย่างเดียว ยังไม่ตัดแต้ม'],
     ['MAX_CONT_SHIFT', 2,
-     'ควงกะได้สูงสุดกี่ผลัดติดกัน — 2 = ควงได้ 1 ครั้ง รวม 48 ชม. / 3 = 72 ชม.']
+     'ควงกะได้สูงสุดกี่ผลัดติดกัน — 2 = ควงได้ 1 ครั้ง รวม 48 ชม. / 3 = 72 ชม.'],
+    ['PT_BAHT_RATE', 25, 'กี่แต้มเท่ากับ 1 บาท — ใช้คิดงบของรางวัล'],
+    ['PT_BUDGET_BAHT', 100, 'งบของรางวัลต่อคนต่อเดือน หน่วยบาท'],
+    ['AUTO_CLOSE_SHIFT', 'TRUE',
+     'ปิดกะที่ค้างข้ามวันให้อัตโนมัติเมื่อผู้รับเวรลงเวลาแล้ว — FALSE = ปิดฟีเจอร์'],
+    ['AUTO_CLOSE_AFTER_MIN', 60,
+     'รอกี่นาทีหลังผู้รับเวรลงเวลา ถึงจะปิดกะเก่าให้อัตโนมัติ'],
+    ['SYNC_FAST_SEC', 45,
+     'ช่วงรอยืนยันรับเวร หน้าแอปถามข้อมูลใหม่ทุกกี่วินาที — เลขน้อยไวขึ้นแต่หนักเซิร์ฟเวอร์'],
+    ['BOOT_CHECKIN_TAIL', 600,
+     'เปิดแอปอ่านประวัติการลงเวลาย้อนหลังกี่แถว — เลขน้อยเร็วขึ้น 600 ≈ สองสัปดาห์'],
+    ['GPS_GOOD_M', 60,
+     'ความแม่นยำ GPS ที่ถือว่าใช้ได้ (เมตร) — ได้ถึงเกณฑ์นี้แล้วหยุดรอสัญญาณทันที'],
+    ['GPS_HUNT_SEC', 20,
+     'หาสัญญาณ GPS นานสุดกี่วินาที ก่อนเสนอให้ใช้ค่าที่ดีที่สุดเท่าที่ได้'],
+    ['GPS_REUSE_SEC', 45,
+     'ใช้พิกัดที่เพิ่งอ่านมาซ้ำได้ภายในกี่วินาที — ทำให้จุดที่ 2,3,4 กดได้แทบทันที'],
+    ['REMIND_LATE2_MIN', 45,
+     'เตือนซ้ำครั้งที่สองเมื่อเลยเวลารอบมาแล้วกี่นาที — ครั้งสุดท้ายก่อนปิดรอบ'],
+    ['MISS_STREAK_WARN', 2,
+     'ขาดติดกันกี่รอบในเวรเดียว ถึงจะแจ้งหัวหน้าทันที']
   ].forEach(function (w) { if (!have[w[0]]) cfgSet(w[0], w[1], w[2]); });
+}
+
+/**
+ * งานปรับค่าครั้งเดียว — ขยายรัศมีและผ่อนเกณฑ์ความแม่นยำ GPS
+ * เหตุ: รปภ. แจ้งว่าหาพิกัดยาก รัศมีเดิม 25 ม. แคบกว่าที่มือถือทำได้จริงในอาคาร
+ * วิธีใช้: เลือกฟังก์ชัน tuneGpsRadius แล้วกด Run ครั้งเดียว — รันซ้ำได้ ไม่ทำข้อมูลพัง
+ * ไม่แตะจุดตรวจที่ตั้งรัศมีไว้กว้างกว่าค่าใหม่อยู่แล้ว
+ */
+function tuneGpsRadius() {
+  var CP_R = 60, STATION_R = 80, ACC = 60, SHIFT_R = 60;
+  var out = { checkpoints: [], config: [] };
+
+  readTable('Checkpoints').forEach(function (c) {
+    if (num(c.radiusM, 25) >= CP_R) return;
+    updateRow('Checkpoints', c._row, { radiusM: CP_R });
+    out.checkpoints.push(String(c.code || c.cpId) + ': ' + num(c.radiusM, 25) + ' -> ' + CP_R);
+  });
+
+  [['STATION_RADIUS_M', STATION_R, 'รัศมีรอบประจำจุด (เมตร) — ในอาคารสัญญาณอ่อน ต้องกว้างกว่าปกติ'],
+   ['MAX_ACCURACY_M',   ACC,       'ความแม่นยำ GPS แย่กว่ากี่เมตร ถึงจะบันทึกเป็นข้อสังเกต'],
+   ['SHIFT_RADIUS_M',   SHIFT_R,   'รัศมีที่ยอมให้ลงเวลาเข้า-ออกเวรได้ (เมตร)']
+  ].forEach(function (w) {
+    var cur = num(cfgGet(w[0], 0), 0);
+    if (cur >= w[1]) return;
+    cfgSet(w[0], w[1], w[2]);
+    out.config.push(w[0] + ': ' + cur + ' -> ' + w[1]);
+  });
+
+  seedStationMidCfg();
+  audit('system', 'ONE_TIME_FIX', 'CONFIG', 'TUNE_GPS_RADIUS', null, out);
+  Logger.log(JSON.stringify(out, null, 2));
+  return out;
 }
 
 /** สุ่มช่วงเวลายืนยันกลางทางของรอบหนึ่ง — คืน null เมื่อปิดฟีเจอร์ */
@@ -3535,7 +3969,7 @@ function sweepMidWindows() {
 
 
 // ===========================================================================
-// ควงกะ — ยามคนเดิมทำต่ออีกผลัดโดยไม่มีคนมารับเวร
+// ควงกะ — รปภ. คนเดิมทำต่ออีกผลัดโดยไม่มีคนมารับเวร
 //   กดครั้งเดียว ปิดกะเดิมและเปิดกะใหม่ของวันทำงานถัดไปในวินาทีเดียวกัน
 //   จะได้ไม่ต้องใช้ปุ่มออกเวรฉุกเฉิน ซึ่งหมายถึงสำนักงานไม่มีคนเฝ้า
 // ===========================================================================
@@ -3564,7 +3998,7 @@ function apiShiftCont(me, req) {
 
     // ถ้ามี รปภ. คนอื่นเข้าเวรแล้ว ให้ส่งเวรตามปกติ ไม่ใช่ควงกะ
     var guards = patrolGuardIds(), waiting = null;
-    openShiftsNow().forEach(function (s) {
+    liveOpenShifts(workDateOf(new Date())).forEach(function (s) {
       if (String(s.guardUserId) === me.userId) return;
       if (!guards[String(s.guardUserId)]) return;
       if (!waiting) waiting = s;
@@ -3635,7 +4069,8 @@ function apiShiftCont(me, req) {
       plannedStart: np ? np.startAt : '', plannedEnd: np ? np.endAt : '',
       lateMin: lateMin, onTime: onTime, earlyOutMin: '',
       handoverId: hoId, emergency: '', emergencyReason: '',
-      contFrom: String(mine.shiftId), contTo: ''
+      contFrom: String(mine.shiftId), contTo: '',
+      inConfirmBy: 'SELF', inConfirmAt: ts   // ควงกะ — คนเดิมต่อเอง ไม่มีผู้รับรองภายนอก
     });
 
     audit(me.userId, 'SHIFT_CONT', 'SHIFT', newId,
@@ -3673,7 +4108,7 @@ function resetTestData() {
     var sh = ss.getSheetByName(name);
     if (!sh) return;
     var last = sh.getLastRow();
-    if (last > 1) { sh.deleteRows(2, last - 1); log[name] = (last - 1) + ' แถว'; }
+    if (last > 1) { sh.deleteRows(2, last - 1); log[name] = (last - 1) + ' แถว'; cacheDrop(); }
   });
   SpreadsheetApp.flush();
   Logger.log('ล้างข้อมูลทดสอบแล้ว: ' + JSON.stringify(log, null, 2));
@@ -3904,4 +4339,168 @@ function apiOwnerOverview(me) {
                refType: String(a.refType || ''), refId: String(a.refId || '') };
     })
   });
+}
+
+
+// ===========================================================================
+// แต้มทีม — สำหรับหัวหน้าเวรและผู้ดูแลระบบ
+//   อันดับแต้มรายคน · อนุมัติของรางวัล · งบของรางวัลเดือนนี้
+// ===========================================================================
+function apiTeamPoints(me) {
+  var gid = patrolGuardIds(), names = {};
+  readPlatform('Members').forEach(function (r) {
+    var id = String(pick(r, ['UserId', 'Username', 'Phone', 'เบอร์โทร', 'Email']) || '').trim();
+    if (id) names[id] = String(pick(r, ['Name', 'ชื่อ-สกุล', 'ชื่อ', 'FullName']) || id);
+  });
+
+  var wd = workDateOf(new Date()), mk = monthOf(wd);
+
+  var board = [];
+  Object.keys(gid).forEach(function (id) {
+    var s;
+    try { s = ptSummary(id).points; } catch (e) { return; }
+    board.push({
+      userId: id, name: names[id] || id,
+      today: num(s.today), month: num(s.month), goal: num(s.goal),
+      career: num(s.career), balance: num(s.balance),
+      level: num(s.level), levelName: String(s.levelName),
+      roundsDone: num(s.roundsDone), roundsTotal: num(s.roundsTotal),
+      badgesGot: num(s.badgesGot), badgesTotal: num(s.badgesTotal)
+    });
+  });
+  board.sort(function (a, b) { return b.month - a.month; });
+
+  var pend = [], hist = [], spent = 0;
+  readTable('Redemptions').forEach(function (r) {
+    var st = String(r.status || 'REQUESTED').toUpperCase();
+    var row = {
+      redId: String(r.redId), ts: String(r.ts), workDate: dstr(r.workDate),
+      userId: String(r.userId), userName: String(r.userName || names[String(r.userId)] || ''),
+      rewardName: String(r.rewardName || ''), cost: num(r.cost), status: st,
+      handledBy: String(r.handledBy || ''), handledAt: String(r.handledAt || '')
+    };
+    if (st === 'REQUESTED') pend.push(row);
+    if (st !== 'CANCELLED' && monthOf(row.workDate) === mk) spent += row.cost;
+    hist.push(row);
+  });
+  pend.sort(function (a, b) { return a.ts < b.ts ? -1 : 1; });
+  hist.sort(function (a, b) { return a.ts > b.ts ? -1 : 1; });
+
+  var rate  = Math.max(1, num(cfgGet('PT_BAHT_RATE', 25), 25));
+  var perHd = num(cfgGet('PT_BUDGET_BAHT', 100), 100);
+  var heads = Math.max(1, board.length);
+
+  return ok({
+    workDate: wd, month: mk, board: board,
+    pending: pend, history: hist.slice(0, 20),
+    budget: {
+      spentPts: spent, spentBaht: Math.round(spent / rate),
+      rate: rate, perHeadBaht: perHd, heads: heads, capBaht: perHd * heads,
+      pct: Math.min(100, Math.round((spent / rate) * 100 / Math.max(1, perHd * heads)))
+    }
+  });
+}
+
+
+// ===========================================================================
+// ปิดกะที่ค้างข้ามวันให้อัตโนมัติ
+//   เงื่อนไข — กะเปิดค้าง · เป็นของคนอื่น · วันทำงานเก่ากว่าผู้รับเวร
+//   · ผู้รับเวรลงเวลามาแล้วเกิน AUTO_CLOSE_AFTER_MIN นาที
+//   ปิดย้อนไปที่เวลาที่ผู้รับเวรลงเวลา เพื่อให้ชั่วโมงทำงานตรงความจริง
+// ===========================================================================
+function emergencyWanted(req) { return !!(req && req.emergency); }
+
+function sweepStaleShifts() {
+  if (!bool(cfgGet('AUTO_CLOSE_SHIFT', 'TRUE'))) return 0;
+
+  var wait = Math.max(5, num(cfgGet('AUTO_CLOSE_AFTER_MIN', 60), 60));
+  var now  = Date.now();
+  var rows = readTable('Shifts');
+  var guards = patrolGuardIds();
+
+  var open = rows.filter(function (s) { return s.checkInAt && !s.checkOutAt; });
+  if (open.length < 2) return 0;
+
+  var closed = 0;
+  open.forEach(function (old) {
+    var oldWd = dstr(old.workDate);
+
+    // หาผู้รับเวร — คนอื่นที่ลงเวลาในวันทำงานใหม่กว่า และมาถึงนานพอแล้ว
+    var taker = null;
+    open.forEach(function (s) {
+      if (String(s.shiftId) === String(old.shiftId)) return;
+      if (String(s.guardUserId) === String(old.guardUserId)) return;
+      if (!guards[String(s.guardUserId)]) return;
+      if (dstr(s.workDate) <= oldWd) return;
+      var inMs = parseIso(s.checkInAt).getTime();
+      if (isNaN(inMs) || now - inMs < wait * 60000) return;
+      if (!taker || String(s.checkInAt) < String(taker.checkInAt)) taker = s;
+    });
+    if (!taker) return;
+
+    var atIso = String(taker.checkInAt);
+    var endMs = parseIso(old.plannedEnd).getTime();
+    var early = isNaN(endMs) ? 0
+              : Math.max(0, Math.round((endMs - parseIso(atIso).getTime()) / 60000));
+
+    var hoId = uid();
+    appendRow('Handovers', {
+      hoId: hoId, workDate: oldWd, ts: atIso,
+      outUserId: String(old.guardUserId), outName: String(old.guardName || ''),
+      inUserId: String(taker.guardUserId), inName: String(taker.guardName || ''),
+      note: 'ปิดอัตโนมัติ — ผู้รับเวรลงเวลาแล้วเกิน ' + wait + ' นาที ไม่มีข้อความส่งต่อ',
+      ackAt: '', status: 'AUTO'
+    });
+
+    var oldNote = String(old.note || '');
+    var addNote = 'ปิดอัตโนมัติเมื่อ ' + fmt(new Date(), 'd/M HH:mm') +
+                  ' — ผู้ปฏิบัติงานไม่ได้กดออกเวร';
+    updateRow('Shifts', old._row, {
+      checkOutAt: atIso, status: 'CLOSED', earlyOutMin: early, handoverId: hoId,
+      note: oldNote ? (oldNote + ' | ' + addNote) : addNote
+    });
+
+    // แถวของผู้รับเวรยังไม่มีใครรับรอง บันทึกตรง ๆ ว่าระบบปิดให้
+    if (!String(taker.inConfirmBy || ''))
+      updateRow('Shifts', taker._row, { inConfirmBy: 'AUTO', inConfirmAt: nowIso() });
+
+    notifySupervisor('⚠️ ' + String(old.guardName || '') + ' ไม่ได้กดออกเวรของวันที่ ' + oldWd +
+                     ' — ระบบปิดให้อัตโนมัติที่เวลา ' + fmt(parseIso(atIso), 'd/M HH:mm') +
+                     ' น. (เวลาที่ ' + String(taker.guardName || '') + ' ลงเวลาเข้าเวร)', 'MED');
+    closed++;
+  });
+
+  return closed;
+}
+
+// ---------------------------------------------------------------------------
+// ซ่อมข้อมูลเวรที่ซ้อนกันช่วง 1–3 ต.ค. 2569 — รันครั้งเดียวจากหน้าแก้ไขสคริปต์
+// ---------------------------------------------------------------------------
+function fixOverlapShifts() {
+  var want = {};
+  want['58407a94'] = { at: '2026-10-02T06:33:02+07:00',
+                       note: 'แก้ย้อนหลัง — ลืมกดออกเวร ปิดที่เวลาผู้รับเวรลงเวลาจริง' };
+  want['6b573a10'] = { at: '2026-10-03T06:49:51+07:00',
+                       note: 'แก้ย้อนหลัง — ลืมกดออกเวร ปิดที่เวลาผู้รับเวรลงเวลาจริง' };
+
+  var out = [];
+  readTable('Shifts').forEach(function (s) {
+    var w = want[String(s.shiftId)];
+    if (!w) return;
+    var endMs = parseIso(s.plannedEnd).getTime();
+    var early = isNaN(endMs) ? 0
+              : Math.max(0, Math.round((endMs - parseIso(w.at).getTime()) / 60000));
+    var old = String(s.note || '');
+    updateRow('Shifts', s._row, {
+      checkOutAt: w.at, status: 'CLOSED', earlyOutMin: early,
+      note: old ? (old + ' | ' + w.note) : w.note
+    });
+    out.push(String(s.shiftId) + ' → ' + w.at);
+  });
+
+  SpreadsheetApp.flush();
+  try { rebuildPoints(); } catch (e) {}
+  audit('system', 'ONE_TIME_FIX', 'SHIFTS', 'FIX_OVERLAP', null, out);
+  Logger.log(JSON.stringify(out, null, 2));
+  return out;
 }
