@@ -1238,7 +1238,20 @@ function apiFetch(action, body, retry){
     throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่');
   });
 }
-function api(action, body){ return apiFetch(action, body, false); }
+/* ไม่มีเวลาจำกัด = ถ้าเซิร์ฟเวอร์อืด หน้าจอจะค้างที่ "กำลังโหลด…" ตลอดไป
+   ใส่เพดานเวลาไว้ ให้ขึ้นข้อความบอกแทนการค้างเงียบ ๆ */
+function api(action, body, timeoutSec){
+  var ms = (timeoutSec || 40) * 1000;
+  var done=false;
+  var work = apiFetch(action, body, false).then(function(j){ done=true; return j; },
+                                               function(e){ done=true; throw e; });
+  var guard = new Promise(function(_,rej){
+    setTimeout(function(){
+      if(!done) rej(new Error('เซิร์ฟเวอร์ตอบช้าผิดปกติ — ลองใหม่อีกครั้ง'));
+    }, ms);
+  });
+  return Promise.race([work, guard]);
+}
 function isAuthErr(e){ return /เซสชัน|สิทธิ์|เข้าสู่ระบบใหม่/.test(e && e.message || ''); }
 
 /* ========================= คิวออฟไลน์ (IndexedDB) ========================= */
@@ -2491,8 +2504,9 @@ function openAdmRounds(d){
   show('scAdmR','fwd');
   AR.date = d || (S.boot && S.boot.workDate) || ymd(new Date());
   $('arDate').value = AR.date;
-  loadAdmRounds();
-  loadGuardScore();
+  $('arScore').innerHTML='<p class="muted" style="font-size:13px">รอโหลดรายการรอบก่อน…</p>';
+  /* ยิงทีละคำขอ — ส่งสองคำขอหนักพร้อมกัน Google จะเข้าคิวให้ กลายเป็นช้าทั้งคู่ */
+  loadAdmRounds().then(function(){ loadGuardScore(); });
 }
 function ymd(dt){ return dt.getFullYear()+'-'+pad2(dt.getMonth()+1)+'-'+pad2(dt.getDate()); }
 function shiftDate(days){
@@ -2510,18 +2524,25 @@ function loadAdmRoundsSoon(){
 }
 
 function loadAdmRounds(){
-  if(AR_BUSY) return;
+  if(AR_BUSY) return Promise.resolve();
   AR_BUSY=true;
+  var t0=Date.now();
   $('arHead').textContent='กำลังโหลด…';
+  var tick=setInterval(function(){
+    if(!AR_BUSY){ clearInterval(tick); return; }
+    $('arHead').textContent='กำลังโหลด… '+Math.round((Date.now()-t0)/1000)+' วิ';
+  }, 1000);
   $('arSum').innerHTML=''; $('arList').innerHTML='<div class="sk"></div><div class="sk" style="width:70%"></div>';
   var want=AR.date;
-  api('roundsDay',{workDate:want}).then(function(j){
+  return api('roundsDay',{workDate:want},40).then(function(j){
     if(want!==AR.date) return;          // ผู้ใช้เปลี่ยนวันระหว่างรอ ทิ้งผลเก่าไป
     AR.data=j; AR.open={}; paintAdmRounds();
   }).catch(function(e){
-    $('arHead').textContent='โหลดไม่สำเร็จ: '+(e.message||'');
+    $('arHead').innerHTML='โหลดไม่สำเร็จ — '+esc(e.message||'')+
+      ' <button class="btn-ghost btn-sm" id="arRetry" style="margin:8px 0 0">ลองใหม่</button>';
     $('arList').innerHTML='';
-  }).then(function(){ AR_BUSY=false; });
+    var rb=$('arRetry'); if(rb) rb.onclick=function(){ loadAdmRounds(); };
+  }).then(function(){ clearInterval(tick); AR_BUSY=false; });
 }
 
 function arTag(r){
@@ -2607,7 +2628,7 @@ function loadGuardScore(){
   GS_BUSY=true;
   var d=$('arDays').value||'30';
   $('arScore').innerHTML='<div class="sk"></div>';
-  api('guardScore',{days:+d}).then(function(j){
+  api('guardScore',{days:+d},40).then(function(j){
     if(!j.guards.length){ $('arScore').innerHTML='<p class="muted">ยังไม่มีข้อมูลในช่วงนี้</p>'; return; }
     var h='';
     j.guards.forEach(function(g){
@@ -2652,8 +2673,11 @@ function loadGuardScore(){
       h+='<p class="muted" style="font-size:12.5px;margin:10px 0 0">'+
          'มีอีก '+j.unattributed+' รอบที่ขาดแต่ไม่รู้ว่าใครอยู่เวร — เป็นข้อมูลเก่าก่อนระบบเริ่มบันทึกชื่อผู้อยู่เวร</p>';
     $('arScore').innerHTML=h;
-  }).catch(function(e){ $('arScore').innerHTML='<p class="muted">โหลดไม่สำเร็จ: '+(e.message||'')+'</p>'; })
-    .then(function(){ GS_BUSY=false; });
+  }).catch(function(e){
+    $('arScore').innerHTML='<p class="muted">โหลดไม่สำเร็จ — '+esc(e.message||'')+'</p>'+
+      '<button class="btn-ghost btn-sm" id="gsRetry" style="margin-top:8px">ลองใหม่</button>';
+    var gb=$('gsRetry'); if(gb) gb.onclick=loadGuardScore;
+  }).then(function(){ GS_BUSY=false; });
 }
 
 if($('btnBackAdmR'))   $('btnBackAdmR').onclick  =function(){ goBack(); };

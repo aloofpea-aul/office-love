@@ -3605,8 +3605,15 @@ function apiRoundsDay(me, req) {
   var wd = dstr(req && req.workDate) || workDateOf(new Date());
   var dmap = dutyMap(), duty = dmap[wd] || null;
 
+  // ย้อนไปไกลแค่ไหน ก็อ่านเท่าที่จำเป็น — วันนี้ใช้แค่ ~180 แถว ไม่ใช่ 600
+  var dayMs   = 86400000;
+  var backDay = Math.max(0, Math.round(
+                  (new Date(workDateOf(new Date()) + 'T12:00:00').getTime() -
+                   new Date(wd + 'T12:00:00').getTime()) / dayMs));
+  var tail = Math.min(3000, 60 * (backDay + 3));
+
   var ckByRound = {};
-  readTableTail('Checkins', num(cfgGet('BOOT_CHECKIN_TAIL', 600), 600)).forEach(function (c) {
+  readTableTail('Checkins', tail).forEach(function (c) {
     var k = String(c.roundId);
     (ckByRound[k] = ckByRound[k] || []).push(c);
   });
@@ -3666,6 +3673,7 @@ function apiGuardScore(me, req) {
     return byUser[id];
   }
 
+  var oldNoOwner = 0;
   readTable('Rounds').forEach(function (r) {
     var wd = dstr(r.workDate);
     if (!wd || wd < from) return;
@@ -3676,7 +3684,7 @@ function apiGuardScore(me, req) {
     var id   = String(r.guardUserId || r.dutyUserId || '');
     var name = String(r.dutyName || '');
     if (!id && dmap[wd]) { id = dmap[wd].id; name = name || dmap[wd].name; }
-    if (!id) return;                       // ข้อมูลเก่าที่ไม่มีเจ้าของ นับแยกไม่ได้
+    if (!id) { if (st === 'MISSED') oldNoOwner++; return; }   // ข้อมูลเก่าที่ไม่มีเจ้าของ
     if (!gid[id]) return;                  // นับเฉพาะ รปภ. ไม่เอาบัญชีผู้ดูแลหรือบัญชีทดสอบ
 
     var b = slot(id, name);
@@ -3684,14 +3692,6 @@ function apiGuardScore(me, req) {
     if (st === 'COMPLETE') b.done++;
     else if (st === 'PARTIAL') b.partial++;
     else b.missed++;
-  });
-
-  var oldNoOwner = 0;
-  readTable('Rounds').forEach(function (r) {
-    var wd = dstr(r.workDate);
-    if (!wd || wd < from) return;
-    if (String(r.status) !== 'MISSED') return;
-    if (!String(r.guardUserId || r.dutyUserId || '') && !dmap[wd]) oldNoOwner++;
   });
 
   // ── สถิติการเข้าเวร ─────────────────────────────────────────────────
