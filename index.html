@@ -375,7 +375,8 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
       </div>
       <div class="admgrid" id="admGrid"></div>
       <div id="admOn" style="font-size:15px;margin-top:11px"></div>
-      <div class="row" style="gap:8px;margin-top:12px">
+      <button class="btn-ghost" id="btnAdmRounds" style="margin-top:12px">🧭 ดูรอบเดินตรวจ</button>
+      <div class="row" style="gap:8px;margin-top:8px">
         <a class="btn btn-ghost" href="supervisor.html"
            style="text-decoration:none;flex:1;margin:0">📋 หัวหน้าเวร</a>
         <a class="btn btn-ghost" href="admin.html"
@@ -433,6 +434,7 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
     <div id="staffLinks" class="hide" style="margin-top:10px">
       <a class="btn btn-ghost" href="supervisor.html" style="text-decoration:none;margin-bottom:8px">📋 หน้าหัวหน้าเวร</a>
       <a class="btn btn-ghost" id="lnkAdmin" href="admin.html" style="text-decoration:none">⚙️ ตั้งค่าระบบ</a>
+      <button class="btn-ghost" id="btnAdmRounds2" style="margin-top:8px">🧭 ดูรอบเดินตรวจ</button>
       <button class="btn-ghost" id="btnInspHome" style="margin-top:8px">🔍 สุ่มตรวจจุด (ไม่นับเป็นรอบ)</button>
     </div>
   </div>
@@ -1029,6 +1031,39 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   </div>
 </section>
 
+<!-- ───────────── ผู้ดูแล/หัวหน้า — ดูรอบเดินตรวจ ───────────── -->
+<section id="scAdmR" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackAdmR">‹ กลับ</button>
+    <strong>รอบเดินตรวจ</strong>
+    <span style="width:44px"></span>
+  </div></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="row between" style="gap:8px;align-items:center">
+        <button class="btn-ghost btn-sm" id="arPrev" style="margin:0;flex:0 0 auto">‹ วันก่อน</button>
+        <input type="date" id="arDate" style="flex:1;min-width:0;margin:0;text-align:center">
+        <button class="btn-ghost btn-sm" id="arNext" style="margin:0;flex:0 0 auto">วันถัดไป ›</button>
+      </div>
+      <div id="arHead" class="muted" style="margin-top:10px;font-size:14px">กำลังโหลด…</div>
+      <div id="arSum" class="admgrid" style="margin-top:10px"></div>
+    </div>
+    <div id="arList"></div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="row between">
+        <h3 style="margin:0">สรุปรายคน — เดินตรวจ + เข้าเวร</h3>
+        <select id="arDays" style="width:auto;margin:0;padding:6px 10px;font-size:14px">
+          <option value="7">7 วัน</option>
+          <option value="30" selected>30 วัน</option>
+          <option value="90">90 วัน</option>
+        </select>
+      </div>
+      <div id="arScore" style="margin-top:10px"></div>
+    </div>
+  </div>
+</section>
+
 <div id="toast" class="toast hide"></div>
 <div id="fx" class="hide"></div>
 
@@ -1048,11 +1083,17 @@ var API = window.OL_API || '';
 
 /* ========================= เครื่องมือพื้นฐาน ========================= */
 var $ = function(id){ return document.getElementById(id); };
+/* กันอักขระพิเศษจากชีตทำ HTML พัง เช่น ชื่อจุดที่มี & หรือ < */
+function esc(v){
+  return String(v==null?'':v).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
-var SC_ALL=['scSplash','scLogin','scHome','scMe','scPts','scTeam','scHelp','scInsp','scRound','scCheck','scInc'];
+var SC_ALL=['scSplash','scLogin','scHome','scMe','scPts','scTeam','scHelp','scInsp','scRound','scCheck','scInc','scAdmR'];
 var SC_TAB={scHome:0,scPts:1,scTeam:1,scHelp:2,scMe:3};
-var SC_DEEP={scHome:0,scPts:1,scTeam:1,scHelp:1,scMe:1,scInsp:1,scRound:1,scInc:1,scCheck:2};
+var SC_DEEP={scHome:0,scPts:1,scTeam:1,scHelp:1,scMe:1,scInsp:1,scRound:1,scInc:1,scCheck:2,scAdmR:1};
 var SC_CUR='';
 
 /* เปลี่ยนหน้าทันที ไม่รอเน็ต — dir: 'fwd' | 'back' | 'none' */
@@ -1787,6 +1828,20 @@ function doShiftOut(btn, taker, emergency, reason){
       buzz(40);
       toast(r.emergency?'บันทึกออกเวรฉุกเฉินแล้ว — แจ้งผู้จัดการเรียบร้อย'
                        :('ออกเวรเรียบร้อย'+(r.handoverTo?' · ยืนยันการรับเวรของ '+r.handoverTo+' แล้ว':'')), 4500);
+      /* สรุปท้ายเวร — ให้เจ้าตัวเห็นผลงานของตัวเองทันที ไม่ต้องรอหัวหน้าบอก */
+      var su=r.summary;
+      if(su && su.total){
+        setTimeout(function(){
+          var ok = su.missed===0 && su.partial===0;
+          var msg = 'สรุปเวรนี้\n\nเดินครบ '+su.done+' จาก '+su.total+' รอบ'+
+                    (su.partial?('\nไม่ครบจุด '+su.partial+' รอบ'):'')+
+                    (su.missed ?('\nขาด '+su.missed+' รอบ'):'')+
+                    (su.missedNo && su.missedNo.length?('\n(รอบที่ '+su.missedNo.join(', ')+')'):'')+
+                    (ok?'\n\nเยี่ยมมาก ครบทุกรอบ':'');
+          if(ok){ sfxDone(); fxOk('🏆'); }
+          alert(msg);
+        }, 900);
+      }
       return loadHome();
     }).catch(function(e){
       var m=String(e.message||'');
@@ -2322,6 +2377,167 @@ function refreshGps(again){
   });
 }
 $('btnGpsAgain').onclick=function(){ sfxTap(); refreshGps(true); };
+
+/* ============== ผู้ดูแล/หัวหน้า — ดูรอบเดินตรวจย้อนหลัง ============== */
+var AR = { date:'', data:null, open:{} };
+
+function openAdmRounds(d){
+  show('scAdmR','fwd');
+  AR.date = d || (S.boot && S.boot.workDate) || ymd(new Date());
+  $('arDate').value = AR.date;
+  loadAdmRounds();
+  loadGuardScore();
+}
+function ymd(dt){ return dt.getFullYear()+'-'+pad2(dt.getMonth()+1)+'-'+pad2(dt.getDate()); }
+function shiftDate(days){
+  var p=AR.date.split('-');
+  var dt=new Date(+p[0], +p[1]-1, +p[2]);
+  dt.setDate(dt.getDate()+days);
+  AR.date=ymd(dt); $('arDate').value=AR.date; loadAdmRounds();
+}
+
+function loadAdmRounds(){
+  $('arHead').textContent='กำลังโหลด…';
+  $('arSum').innerHTML=''; $('arList').innerHTML='<div class="sk"></div><div class="sk" style="width:70%"></div>';
+  api('roundsDay',{workDate:AR.date}).then(function(j){
+    AR.data=j; AR.open={}; paintAdmRounds();
+  }).catch(function(e){
+    $('arHead').textContent='โหลดไม่สำเร็จ: '+(e.message||'');
+    $('arList').innerHTML='';
+  });
+}
+
+function arTag(r){
+  var st=String(r.status);
+  if(st==='COMPLETE') return '<span class="pill ok">ครบ</span>';
+  if(st==='MISSED')   return '<span class="pill bad">ขาด</span>';
+  if(st==='PARTIAL')  return '<span class="pill warn">ไม่ครบจุด</span>';
+  if(st==='OPEN')     return '<span class="pill live">กำลังเดิน</span>';
+  return '<span class="pill">รอเวลา</span>';
+}
+
+function paintAdmRounds(){
+  var j=AR.data, su=j.summary||{};
+  $('arHead').innerHTML = thaiDate(j.workDate)+' · '+(j.dayType==='HOLIDAY'?'วันหยุด':'วันทำการ')+
+    (j.duty ? ' · อยู่เวร <b>'+esc(j.duty.name||j.duty.userId)+'</b> เข้าเวร '+hhmm(j.duty.checkInAt)+' น.'
+            : ' · <span class="muted">ไม่มีใครลงเวลาเข้าเวร</span>');
+  $('arSum').innerHTML =
+    '<div><b>'+(su.done||0)+'</b><span>ครบ</span></div>'+
+    '<div><b>'+(su.partial||0)+'</b><span>ไม่ครบจุด</span></div>'+
+    '<div><b>'+(su.missed||0)+'</b><span>ขาด</span></div>'+
+    '<div><b>'+(su.open||0)+'</b><span>ยังไม่ถึง</span></div>';
+
+  if(!j.rounds.length){ $('arList').innerHTML='<p class="muted">วันนี้ยังไม่มีรอบในระบบ</p>'; return; }
+
+  var h='';
+  j.rounds.forEach(function(r){
+    var time = r.flex ? (hhmm(r.openAt)+'–'+hhmm(r.closeAt)+' ยืดหยุ่น') : (hhmm(r.schedAt)+' น.');
+    var walked = r.startedAt
+      ? ('เดินจริง '+hhmm(r.startedAt)+(r.finishedAt?' – '+hhmm(r.finishedAt):' · ยังไม่จบ'))
+      : 'ไม่มีการลงเวลา';
+    var who = r.walkerId || r.dutyName || '';
+    var mid = '';
+    if(r.midResult==='OK')     mid=' <span class="pill ok">ยืนยันกลางทาง</span>';
+    if(r.midResult==='MISSED') mid=' <span class="pill bad">ไม่ยืนยันกลางทาง</span>';
+    h+='<div class="card arrow" data-ar="'+esc(r.roundId)+'" style="cursor:pointer">'+
+       '<div class="row between"><div>'+
+       '<strong>รอบที่ '+r.roundNo+' · '+time+'</strong>'+
+       '<div class="muted" style="font-size:13.5px;margin-top:2px">'+esc(walked)+
+       (who?(' · '+esc(who)):'')+' · จุด '+r.pointsDone+'/'+r.pointsTotal+'</div>'+
+       '</div>'+arTag(r)+mid+'</div>'+
+       '<div id="arck_'+esc(r.roundId)+'" class="hide" style="margin-top:10px"></div></div>';
+  });
+  $('arList').innerHTML=h;
+
+  Array.prototype.forEach.call($('arList').querySelectorAll('[data-ar]'),function(el){
+    el.onclick=function(){
+      var id=el.dataset.ar, box=$('arck_'+id);
+      if(!box) return;
+      sfxTap();
+      if(!box.classList.contains('hide')){ box.classList.add('hide'); return; }
+      var r=AR.data.rounds.filter(function(x){return x.roundId===id;})[0];
+      box.innerHTML = arCheckinHtml(r);
+      box.classList.remove('hide');
+    };
+  });
+}
+
+function arCheckinHtml(r){
+  if(!r.checkins.length)
+    return '<div class="banner bad" style="margin:0">ไม่มีการลงเวลาในรอบนี้เลย</div>';
+  var h='';
+  r.checkins.forEach(function(c){
+    var ph = c.phase==='IN' ? 'เข้าจุด' : c.phase==='OUT' ? 'ออกจุด' : c.phase==='MID' ? 'ยืนยันกลางทาง' : 'ลงเวลา';
+    var warn = (c.verify==='OVERRIDE') ? '<span class="pill warn">ยืนยันเอง</span>'
+             : (c.verify==='WARN_ACCURACY') ? '<span class="pill warn">สัญญาณอ่อน</span>'
+             : (c.verify==='NO_GPS') ? '<span class="pill bad">ไม่มีพิกัด</span>' : '';
+    h+='<div class="row between" style="padding:7px 0;border-top:1px solid var(--line)">'+
+       '<div><strong style="font-size:14.5px">'+esc(c.cp)+'</strong>'+
+       '<div class="muted" style="font-size:12.5px">'+hhmm(c.ts)+' น. · '+ph+
+       ' · ห่าง '+c.distanceM+' ม. · ±'+c.accuracyM+' ม.'+
+       (c.reason?(' · '+esc(c.reason)):'')+'</div></div>'+warn+'</div>';
+  });
+  return h;
+}
+
+function loadGuardScore(){
+  var d=$('arDays').value||'30';
+  $('arScore').innerHTML='<div class="sk"></div>';
+  api('guardScore',{days:+d}).then(function(j){
+    if(!j.guards.length){ $('arScore').innerHTML='<p class="muted">ยังไม่มีข้อมูลในช่วงนี้</p>'; return; }
+    var h='';
+    j.guards.forEach(function(g){
+      var pct=g.pct||0, x=g.sh||null;
+      var col = pct>=95 ? 'var(--ok)' : pct>=85 ? 'var(--warn)' : 'var(--bad)';
+      h+='<div style="padding:12px 0;border-top:1px solid var(--line)">'+
+         '<div class="row between"><strong style="font-size:16px">'+esc(g.name)+'</strong>'+
+         (g.total?('<span style="font-weight:700;color:'+col+'">'+pct+'%</span>'):'')+'</div>';
+
+      /* ── รอบเดินตรวจ ── */
+      if(g.total){
+        h+='<div class="ptbar" style="margin:7px 0 5px"><i style="width:'+Math.min(100,pct)+'%;background:'+col+'"></i></div>'+
+           '<div class="muted" style="font-size:13px">เดินตรวจ — ครบ '+g.done+' · ไม่ครบจุด '+g.partial+
+           ' · ขาด '+g.missed+' จาก '+g.total+' รอบ</div>';
+      }
+
+      /* ── การเข้าเวร ── */
+      if(x && x.shifts){
+        var oc = x.onTimePct>=95 ? 'var(--ok)' : x.onTimePct>=80 ? 'var(--warn)' : 'var(--bad)';
+        h+='<div class="admgrid" style="margin-top:9px;grid-template-columns:repeat(3,1fr)">'+
+           '<div><b>'+x.shifts+'</b><span>ผลัด</span></div>'+
+           '<div><b>'+x.hours+'</b><span>ชั่วโมงรวม</span></div>'+
+           '<div><b style="color:'+oc+'">'+x.onTimePct+'%</b><span>เข้าเวรตรงเวลา</span></div>'+
+           '</div>';
+        var bits=[];
+        bits.push('เฉลี่ยผลัดละ '+x.avgHours+' ชม.');
+        if(x.late)      bits.push('สาย '+x.late+' ครั้ง (เฉลี่ย '+x.avgLate+' นาที)');
+        if(x.earlyOut)  bits.push('ออกก่อนเวลา '+x.earlyOut+' ครั้ง');
+        if(x.cont)      bits.push('ควงกะ '+x.cont+' ครั้ง');
+        if(x.forgotOut) bits.push('<span style="color:var(--bad)">ลืมกดออกเวร '+x.forgotOut+' ครั้ง</span>');
+        if(x.emergency) bits.push('<span style="color:var(--bad)">ออกเวรฉุกเฉิน '+x.emergency+' ครั้ง</span>');
+        if(x.noConfirm) bits.push('เข้าเวรโดยไม่มีผู้รับรอง '+x.noConfirm+' ครั้ง');
+        if(x.stillOpen) bits.push('<span style="color:var(--warn)">ยังเปิดค้าง '+x.stillOpen+' ผลัด</span>');
+        h+='<div class="muted" style="font-size:13px;margin-top:7px;line-height:1.75">'+
+           bits.join(' · ')+'</div>';
+      } else {
+        h+='<div class="muted" style="font-size:13px;margin-top:6px">ไม่มีการเข้าเวรในช่วงนี้</div>';
+      }
+      h+='</div>';
+    });
+    if(j.unattributed)
+      h+='<p class="muted" style="font-size:12.5px;margin:10px 0 0">'+
+         'มีอีก '+j.unattributed+' รอบที่ขาดแต่ไม่รู้ว่าใครอยู่เวร — เป็นข้อมูลเก่าก่อนระบบเริ่มบันทึกชื่อผู้อยู่เวร</p>';
+    $('arScore').innerHTML=h;
+  }).catch(function(e){ $('arScore').innerHTML='<p class="muted">โหลดไม่สำเร็จ: '+(e.message||'')+'</p>'; });
+}
+
+if($('btnBackAdmR'))   $('btnBackAdmR').onclick  =function(){ goBack(); };
+if($('btnAdmRounds'))  $('btnAdmRounds').onclick =function(){ openAdmRounds(); };
+if($('btnAdmRounds2')) $('btnAdmRounds2').onclick=function(){ openAdmRounds(); };
+if($('arPrev')) $('arPrev').onclick=function(){ sfxTap(); shiftDate(-1); };
+if($('arNext')) $('arNext').onclick=function(){ sfxTap(); shiftDate(1); };
+if($('arDate')) $('arDate').onchange=function(){ AR.date=this.value; loadAdmRounds(); };
+if($('arDays')) $('arDays').onchange=loadGuardScore;
 
 function paintChecklist(){
   var box=$('clList'); box.innerHTML='';
