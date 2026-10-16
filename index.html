@@ -137,6 +137,11 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .hochk.on .bx{border-color:var(--pri);background:var(--pri);color:#fff}
 #lateBar{position:sticky;top:0;z-index:62;background:#9b1c1c;color:#fff;cursor:pointer;
   font-size:13.5px;font-weight:600;line-height:1.45;padding:10px 14px;text-align:center}
+#staleBar{position:sticky;top:0;z-index:63;background:#3b3566;color:#dcd4f5;
+  font-size:13px;font-weight:600;padding:8px 14px;text-align:center;
+  display:flex;align-items:center;justify-content:center;gap:8px}
+#staleBar .sdot{display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:#c4b5fd;animation:gpulse 1s infinite}
 #gpsBar{position:fixed;left:0;right:0;bottom:0;z-index:95;background:#1e3a5f;color:#fff;
   padding:13px 16px calc(13px + env(safe-area-inset-bottom));font-size:14.5px;font-weight:600;
   line-height:1.5;display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap}
@@ -259,6 +264,8 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
 <body>
 
 <div id="testbar" class="hide">🧪 โหมดทดลอง — ข้อมูลไม่เข้าระบบจริง · ไม่มีการแจ้งเตือนออกไปที่ห้องแชท</div>
+
+<div id="staleBar" class="hide"><span class="sdot"></span><span id="staleTxt">กำลังอัปเดตข้อมูลล่าสุด…</span></div>
 
 <div id="lateBar" class="hide"></div>
 
@@ -1426,13 +1433,42 @@ $('btnLogin').onclick=function(){
 };
 $('btnLogout').onclick=function(){
   if(!confirm('ออกจากระบบ?')) return;
-  S.token=''; try{ localStorage.removeItem('ol_token'); }catch(e){}
+  S.token=''; try{ localStorage.removeItem('ol_token'); localStorage.removeItem('ol_boot'); }catch(e){}
   show('scLogin');
 };
 
 /* ========================= หน้าหลัก ========================= */
-function loadHome(){
-  return api('bootstrap').then(function(j){
+/* ══════ เปิดแอปให้เห็นหน้าจอทันที ══════
+   เก็บข้อมูลครั้งล่าสุดไว้ในเครื่อง เปิดแอปรอบหน้าวาดจากของเก่าก่อน
+   แล้วค่อยดึงของสดมาทับ — ระหว่างนั้นปุ่มที่กดแล้วมีผลจริงจะยังกดไม่ได้
+   กันกดพลาดจากข้อมูลที่ยังไม่สด                                        */
+var STALE = false;
+function bootSave(j){
+  try{ localStorage.setItem('ol_boot', JSON.stringify({ at:Date.now(), j:j })); }catch(e){}
+}
+function bootLoad(){
+  try{
+    var c=JSON.parse(localStorage.getItem('ol_boot')||'null');
+    if(!c || !c.j || !c.j.user) return null;
+    if(Date.now()-c.at > 36*3600000) return null;   // เก่าเกินวันครึ่ง ไม่ใช้
+    return c.j;
+  }catch(e){ return null; }
+}
+
+/* ปุ่มที่กดแล้วเปลี่ยนข้อมูลจริง — ล็อกไว้จนกว่าข้อมูลสดจะมาถึง */
+var LIVE_BTNS=['btnIn','btnOut','btnCont','btnFreeHome','btnSave','btnSendInc','btnPingPrev'];
+function setStale(on){
+  STALE=!!on;
+  var bar=$('staleBar');
+  if(bar) bar.classList.toggle('hide', !on);
+  LIVE_BTNS.forEach(function(id){
+    var b=$(id); if(b) b.disabled = on;
+  });
+  var sb=$('shiftBox');
+  if(sb) sb.style.opacity = on ? '.65' : '';
+}
+
+function renderBoot(j, stale){
     S.boot=j; S.me=j.user;
     if(j.token){ S.token=j.token; try{ localStorage.setItem('ol_token', j.token); }catch(e){} }
     $('testbar').classList[j.test?'remove':'add']('hide');
@@ -1457,11 +1493,16 @@ function loadHome(){
     $('staffLinks').classList.toggle('hide', !staff);
     $('lnkAdmin').classList.toggle('hide', j.user.role!=='ADMIN');
     var sel=$('incCat'); sel.innerHTML='';
-    j.categories.forEach(function(c){
+    (j.categories||[]).forEach(function(c){
       var o=document.createElement('option'); o.value=c.trim(); o.textContent=c.trim(); sel.appendChild(o);
     });
-    show('scHome','none'); qFlush(); loadPoints();
-  });
+    setStale(!!stale);
+    show('scHome','none');
+    if(!stale){ bootSave(j); qFlush(); loadPoints(); }
+}
+
+function loadHome(){
+  return api('bootstrap').then(function(j){ renderBoot(j, false); });
 }
 
 /* ========================= แต้มสะสม ========================= */
@@ -3041,15 +3082,25 @@ $('btnSavePw').onclick=function(){
 function resume(n){
   $('btnSplashRetry').classList.add('hide');
   $('splashMsg').textContent = n>1 ? ('กำลังเชื่อมต่อ… (ครั้งที่ '+n+')') : 'กำลังเข้าสู่ระบบ…';
+  /* มีข้อมูลครั้งก่อนอยู่ ให้เห็นหน้าจอทันทีไม่ต้องรอเซิร์ฟเวอร์ */
+  if(n===1){
+    var cached=bootLoad();
+    if(cached){ try{ renderBoot(cached, true); }catch(e){} }
+  }
   loadHome().catch(function(e){
     if(isAuthErr(e)){
-      S.token=''; try{ localStorage.removeItem('ol_token'); }catch(_){}
+      S.token=''; try{ localStorage.removeItem('ol_token'); localStorage.removeItem('ol_boot'); }catch(_){}
       show('scLogin'); $('loginMsg').textContent='เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่';
       return;
     }
-    $('splashMsg').textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ยังไม่ได้ออกจากระบบนะครับ';
-    $('btnSplashRetry').classList.remove('hide');
-    $('btnSplashLogout').classList.remove('hide');
+    if(STALE){
+      /* ยังมีของเก่าให้ดูอยู่ ไม่ต้องเด้งไปหน้ารอเชื่อมต่อ */
+      var sb2=$('staleTxt'); if(sb2) sb2.textContent='เชื่อมต่อไม่ได้ — ข้อมูลที่เห็นเป็นของรอบก่อน';
+    } else {
+      $('splashMsg').textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ยังไม่ได้ออกจากระบบนะครับ';
+      $('btnSplashRetry').classList.remove('hide');
+      $('btnSplashLogout').classList.remove('hide');
+    }
     setTimeout(function(){
       if(!$('scSplash').classList.contains('hide')) resume(n+1);
     }, Math.min(30000, 3000*n));
@@ -3057,7 +3108,7 @@ function resume(n){
 }
 $('btnSplashRetry').onclick=function(){ resume(1); };
 $('btnSplashLogout').onclick=function(){
-  S.token=''; try{ localStorage.removeItem('ol_token'); }catch(e){}
+  S.token=''; try{ localStorage.removeItem('ol_token'); localStorage.removeItem('ol_boot'); }catch(e){}
   show('scLogin');
 };
 
