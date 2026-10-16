@@ -1262,41 +1262,59 @@ function getPos(opt){
   if(POSC.pos && posAgeMs()<reuse && POSC.pos.coords.accuracy<=good){
     S.pos=POSC.pos; return Promise.resolve(POSC.pos);
   }
-  return gpsHunt(good, (opt.huntSec || gpsCfg('gpsHuntSec', 20))*1000);
+  return gpsHunt(good, (opt.huntSec || gpsCfg('gpsHuntSec', 20))*1000, opt);
 }
 
-function gpsHunt(good, huntMs){
-  return new Promise(function(res,rej){
+var GPS_BUSY = false, GPS_INFLIGHT = null;
+function gpsHunt(good, huntMs, opt){
+  opt = opt || {};
+  /* มีการอ่านค้างอยู่ ให้รอผลเดียวกัน ดีกว่าเปิดตัวอ่านซ้อนหรือโยน error */
+  if(GPS_BUSY && GPS_INFLIGHT) return GPS_INFLIGHT;
+  GPS_INFLIGHT = new Promise(function(res,rej){
     if(!navigator.geolocation) return rej(new Error('เครื่องนี้ไม่รองรับ GPS'));
-    var best=null, done=false, wid=null, tHard=null, denied=false;
+    GPS_BUSY = true;
+    var best=null, done=false, wid=null, tHard=null, tTick=null, denied=false;
+    var startAt=Date.now(), fixes=0, sameFor=0;
+    var onStep = opt.onStep || function(){};
 
+    function leftSec(){ return Math.max(0, Math.ceil((huntMs-(Date.now()-startAt))/1000)); }
     function paint(){
       if(done) return;
-      if(!best){ gpsShow('กำลังหาสัญญาณดาวเทียม…'); return; }
-      var a=Math.round(best.coords.accuracy);
+      var a = best ? Math.round(best.coords.accuracy) : null;
+      onStep({ accuracy:a, leftSec:leftSec(), fixes:fixes });
+      if(a===null){ gpsShow('กำลังหาสัญญาณดาวเทียม… '+leftSec()+' วิ'); return; }
       if(a<=good) gpsShow('ได้สัญญาณแล้ว ±'+a+' ม.');
-      else gpsShow('กำลังหาสัญญาณ ±'+a+' ม. (ต้องการ ±'+good+' ม.)',
+      else gpsShow('ดีสุดตอนนี้ ±'+a+' ม. (ต้องการ ±'+good+' ม.) · '+leftSec()+' วิ',
                    'ใช้พิกัดนี้', function(){ finish(best); }, true);
     }
     function finish(p, err){
-      if(done) return; done=true;
+      if(done) return; done=true; GPS_BUSY=false;
       if(wid!==null){ try{ navigator.geolocation.clearWatch(wid); }catch(e){} }
       if(tHard) clearTimeout(tHard);
+      if(tTick) clearInterval(tTick);
       gpsHide();
       if(p){ POSC.pos=p; POSC.at=Date.now(); S.pos=p; res(p); }
       else  rej(err||new Error('อ่านพิกัดไม่สำเร็จ'));
     }
     function take(p){
+      fixes++;
+      var prev = best ? best.coords.accuracy : null;
       if(!best || p.coords.accuracy < best.coords.accuracy) best=p;
+      /* สัญญาณนิ่งแล้ว (ค่าไม่ดีขึ้นเลยหลายครั้ง) ไม่ต้องรอจนครบเวลา */
+      if(prev!==null && (prev - best.coords.accuracy) < 3) sameFor++; else sameFor=0;
       paint();
-      if(best.coords.accuracy<=good) finish(best);
+      if(best.coords.accuracy<=good) return finish(best);
+      if(sameFor>=4 && Date.now()-startAt > 8000) finish(best);
     }
 
     paint();
-    /* ค่าหยาบจากเสา/ไวไฟก่อน เพื่อให้มีอะไรใช้ทันทีถ้าดาวเทียมไม่มา */
+    tTick = setInterval(paint, 1000);
+
+    /* ปุ่ม "อ่านพิกัดใหม่" ต้องได้ค่าใหม่จริง จึงห้ามใช้ค่าที่ระบบเก็บไว้ */
     try{
       navigator.geolocation.getCurrentPosition(function(p){ if(!done) take(p); },
-        function(){}, { enableHighAccuracy:false, timeout:5000, maximumAge:60000 });
+        function(){}, { enableHighAccuracy:false, timeout:5000,
+                        maximumAge: opt.fresh ? 0 : 60000 });
     }catch(e){}
 
     try{
@@ -1312,6 +1330,7 @@ function gpsHunt(good, huntMs){
       else finish(null, new Error('หาสัญญาณไม่ได้ใน '+Math.round(huntMs/1000)+' วินาที — ลองออกไปที่โล่งแล้วกดใหม่'));
     }, huntMs);
   });
+  return GPS_INFLIGHT;
 }
 function distM(a1,o1,a2,o2){
   var R=6371000, r=Math.PI/180;
@@ -2247,10 +2266,26 @@ function openCheck(cp){
   show('scCheck'); refreshGps();
 }
 
-function refreshGps(){
+var GPS_LAST_ACC = null;
+function refreshGps(again){
+  var btn=$('btnGpsAgain');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ กำลังอ่าน…'; }
   $('gpsDist').textContent='กำลังหาสัญญาณ…';
   $('gpsBanner').innerHTML=''; $('gpsAcc').textContent='—';
-  getPos().then(function(p){
+
+  function release(){
+    if(btn){ btn.disabled=false; btn.textContent='🔄 อ่านพิกัดใหม่'; }
+  }
+  /* แสดงความคืบหน้าในการ์ดด้วย ไม่ใช่แค่แถบล่างจอ — กดแล้วต้องเห็นว่าทำงานอยู่ */
+  function step(st){
+    if(btn) btn.textContent='⏳ กำลังอ่าน… '+st.leftSec+' วิ';
+    $('gpsDist').textContent = st.accuracy===null
+      ? 'กำลังหาสัญญาณ… '+st.leftSec+' วิ'
+      : 'ดีสุดตอนนี้ ±'+st.accuracy+' ม. · เหลือ '+st.leftSec+' วิ';
+  }
+
+  getPos({ fresh: again===true, onStep: step }).then(function(p){
+    release();
     var d=distM(p.coords.latitude,p.coords.longitude,S.cp.lat,S.cp.lng);
     var acc=Math.round(p.coords.accuracy);
     $('gpsDist').textContent='ห่างจุดนี้ '+d+' เมตร';
@@ -2273,14 +2308,20 @@ function refreshGps(){
       html+='<div class="banner warn">จุดนี้กับ "'+near[1].c.name+'" อยู่ใกล้กันมาก โปรดตรวจว่าเลือกจุดถูก</div>';
     else
       html+='<div class="banner ok">อยู่ในจุดแล้ว พร้อมบันทึก</div>';
+    /* ถ้าอ่านใหม่แล้วได้เท่าเดิม ต้องบอกให้รู้ ไม่ใช่เงียบจนดูเหมือนปุ่มเสีย */
+    if(again===true && GPS_LAST_ACC!==null && Math.abs(acc-GPS_LAST_ACC)<=3)
+      html = '<div class="banner warn">อ่านใหม่แล้ว สัญญาณยังเท่าเดิม ±'+acc+' ม. '+
+             '— ตัวเครื่องรับดาวเทียมไม่ได้ในจุดนี้ กดบันทึกได้ตามปกติ</div>' + html;
+    GPS_LAST_ACC = acc;
     $('gpsBanner').innerHTML=html;
   }).catch(function(e){
+    release();
     $('gpsDist').textContent='อ่านพิกัดไม่ได้';
     $('gpsBanner').innerHTML='<div class="banner bad">'+e.message+
       ' — บันทึกได้แต่ต้องใส่เหตุผล</div>';
   });
 }
-$('btnGpsAgain').onclick=refreshGps;
+$('btnGpsAgain').onclick=function(){ sfxTap(); refreshGps(true); };
 
 function paintChecklist(){
   var box=$('clList'); box.innerHTML='';
