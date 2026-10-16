@@ -137,6 +137,18 @@ label{display:block;font-size:16px;color:var(--dim);margin:12px 0 6px}
 .hochk.on .bx{border-color:var(--pri);background:var(--pri);color:#fff}
 #lateBar{position:sticky;top:0;z-index:62;background:#9b1c1c;color:#fff;cursor:pointer;
   font-size:13.5px;font-weight:600;line-height:1.45;padding:10px 14px;text-align:center}
+.ccard{background:var(--card2);border:1px solid var(--line);border-radius:14px;
+  padding:13px 14px;margin-bottom:10px}
+.ccard .cnm{font-size:16.5px;font-weight:700;line-height:1.35}
+.ccard .crole{font-size:13px;color:var(--dim);margin-top:1px}
+.ccard .cbtns{display:flex;gap:9px;margin-top:11px}
+.ccard .cbtns a{flex:1;margin:0;text-decoration:none;min-height:50px;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  font-size:16px;font-weight:700;border-radius:12px}
+.cTel{background:#15803d;color:#fff}
+.cLine{background:#06;background:#06c755;color:#fff}
+.cNone{background:var(--card);color:var(--dim);border:1px dashed var(--line);font-weight:500}
+.chot{border-color:#b91c1c}
 #staleBar{position:sticky;top:0;z-index:63;background:#3b3566;color:#dcd4f5;
   font-size:13px;font-weight:600;padding:8px 14px;text-align:center;
   display:flex;align-items:center;justify-content:center;gap:8px}
@@ -436,6 +448,7 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
 
     <div id="freeRow"></div>
     <button class="btn-ghost" id="btnFreeHome" style="margin-top:8px">🔦 ตรวจเพิ่มนอกรอบ</button>
+    <button class="btn-ghost" id="btnCallHome" style="margin-top:8px">📞 ติดต่อฉุกเฉิน</button>
     <button class="btn-ghost" id="btnIncidentHome" style="margin-top:8px">⚠️ แจ้งเหตุผิดปกติ</button>
     <button class="btn-ghost" id="btnHelpHome" style="margin-top:8px">📖 คู่มือการใช้งาน</button>
     <div id="staffLinks" class="hide" style="margin-top:10px">
@@ -1038,6 +1051,21 @@ body.hastab .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   </div>
 </section>
 
+<!-- ───────────── ติดต่อฉุกเฉิน ───────────── -->
+<section id="scCall" class="hide">
+  <div class="topbar"><div class="wrap row between">
+    <button class="back" id="btnBackCall">‹ กลับ</button>
+    <strong>ติดต่อฉุกเฉิน</strong>
+    <span style="width:44px"></span>
+  </div></div>
+  <div class="wrap">
+    <p class="muted" style="margin:0 0 14px">แตะปุ่มเขียวเพื่อโทรออก หรือปุ่มไลน์เพื่อเปิดแชท</p>
+    <div id="callList"></div>
+    <p class="muted" style="font-size:13px;margin-top:18px">
+      เบอร์ที่ยังว่างอยู่ ผู้ดูแลระบบเพิ่มให้ได้ในหน้าตั้งค่าระบบ</p>
+  </div>
+</section>
+
 <!-- ───────────── ผู้ดูแล/หัวหน้า — ดูรอบเดินตรวจ ───────────── -->
 <section id="scAdmR" class="hide">
   <div class="topbar"><div class="wrap row between">
@@ -1098,9 +1126,9 @@ function esc(v){
 }
 var S = { token:'', me:null, boot:null, round:null, cp:null, photos:[], incPhotos:[], heading:null, pos:null };
 
-var SC_ALL=['scSplash','scLogin','scHome','scMe','scPts','scTeam','scHelp','scInsp','scRound','scCheck','scInc','scAdmR'];
+var SC_ALL=['scSplash','scLogin','scHome','scMe','scPts','scTeam','scHelp','scInsp','scRound','scCheck','scInc','scAdmR','scCall'];
 var SC_TAB={scHome:0,scPts:1,scTeam:1,scHelp:2,scMe:3};
-var SC_DEEP={scHome:0,scPts:1,scTeam:1,scHelp:1,scMe:1,scInsp:1,scRound:1,scInc:1,scCheck:2,scAdmR:1};
+var SC_DEEP={scHome:0,scPts:1,scTeam:1,scHelp:1,scMe:1,scInsp:1,scRound:1,scInc:1,scCheck:2,scAdmR:1,scCall:1};
 var SC_CUR='';
 
 /* เปลี่ยนหน้าทันที ไม่รอเน็ต — dir: 'fwd' | 'back' | 'none' */
@@ -2419,6 +2447,43 @@ function refreshGps(again){
 }
 $('btnGpsAgain').onclick=function(){ sfxTap(); refreshGps(true); };
 
+/* ============== ติดต่อฉุกเฉิน ============== */
+function telHref(p){ return 'tel:'+String(p).replace(/[^0-9+#*]/g,''); }
+function lineHref(v){
+  v=String(v||'').trim();
+  if(!v) return '';
+  if(/^https?:\/\//i.test(v) || /^line:\/\//i.test(v)) return v;   // ใส่ลิงก์มาเต็ม
+  return 'https://line.me/ti/p/~' + v.replace(/^[@~]/,'');          // ใส่มาเป็นไอดี
+}
+function openCall(){
+  show('scCall','fwd');
+  var list=(S.boot&&S.boot.contacts)||[];
+  if(!list.length){
+    $('callList').innerHTML='<p class="muted">ยังไม่มีรายชื่อติดต่อ — ผู้ดูแลระบบเพิ่มได้ในหน้าตั้งค่าระบบ</p>';
+    return;
+  }
+  var h='';
+  list.forEach(function(c){
+    var hot = ['191','199','1669'].indexOf(c.phone)>=0;
+    var ln  = lineHref(c.lineId);
+    h+='<div class="ccard'+(hot?' chot':'')+'">'+
+       '<div class="cnm">'+esc(c.name)+'</div>'+
+       (c.role?('<div class="crole">'+esc(c.role)+(c.phone?(' · '+esc(c.phone)):'')+'</div>')
+              :(c.phone?('<div class="crole">'+esc(c.phone)+'</div>'):''))+
+       '<div class="cbtns">'+
+       (c.phone ? '<a class="cTel" href="'+telHref(c.phone)+'">📞 โทร</a>'
+                : '<span class="cNone">ยังไม่มีเบอร์</span>')+
+       (ln ? '<a class="cLine" href="'+esc(ln)+'" target="_blank" rel="noopener">💬 ไลน์</a>' : '')+
+       '</div></div>';
+  });
+  $('callList').innerHTML=h;
+  Array.prototype.forEach.call($('callList').querySelectorAll('a'),function(a){
+    a.addEventListener('click', function(){ sfxTap(); });
+  });
+}
+if($('btnCallHome'))  $('btnCallHome').onclick =function(){ openCall(); };
+if($('btnBackCall'))  $('btnBackCall').onclick =function(){ goBack(); };
+
 /* ============== ผู้ดูแล/หัวหน้า — ดูรอบเดินตรวจย้อนหลัง ============== */
 var AR = { date:'', data:null, open:{} };
 
@@ -3281,7 +3346,7 @@ function goBack(){
   sfxTap();
   var c=SC_CUR;
   if(c==='scCheck'){ stopCamSafe(); show('scRound','back'); return; }
-  if(c==='scMe'||c==='scPts'||c==='scTeam'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'||c==='scAdmR'){
+  if(c==='scMe'||c==='scPts'||c==='scTeam'||c==='scHelp'||c==='scInsp'||c==='scRound'||c==='scInc'||c==='scAdmR'||c==='scCall'){
     stopCamSafe();
     if(typeof AR_TIMER!=='undefined' && AR_TIMER){ clearTimeout(AR_TIMER); AR_TIMER=null; }
     show('scHome','back');       // เปลี่ยนหน้าก่อน

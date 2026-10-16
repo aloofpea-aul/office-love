@@ -99,6 +99,7 @@ th{color:var(--dim);font-weight:600;font-size:14px}
     <button data-t="rp">ตารางรอบ</button>
     <button data-t="sp">ตารางกะ</button>
     <button data-t="hd">วันหยุด</button>
+    <button data-t="ct">เบอร์ติดต่อ</button>
     <button data-t="cf">ค่าระบบ</button>
   </div>
 
@@ -305,6 +306,26 @@ th{color:var(--dim);font-weight:600;font-size:14px}
     <div class="card"><div style="overflow-x:auto"><table id="hdTable"></table></div></div>
   </div>
 
+  <!-- ── เบอร์ติดต่อฉุกเฉิน ── -->
+  <div id="tab-ct" class="hide">
+    <div class="card">
+      <h2>เบอร์ติดต่อฉุกเฉิน</h2>
+      <p class="muted">รายชื่อนี้ รปภ. ทุกคนเห็นในแอป กดโทรออกหรือเปิดไลน์ได้ทันที
+        ใส่เบอร์โทร หรือไลน์ อย่างน้อยหนึ่งอย่าง</p>
+      <div class="grid">
+        <div><label>ชื่อผู้ติดต่อ</label><input id="ct_name" placeholder="ผู้จัดการ กฟส.อ่าวลึก"></div>
+        <div><label>ตำแหน่ง / หมายเหตุสั้น</label><input id="ct_role" placeholder="ผู้บังคับบัญชา"></div>
+        <div><label>เบอร์โทร</label><input id="ct_phone" inputmode="tel" placeholder="0812345678"></div>
+        <div><label>ไลน์ (ไอดี หรือ ลิงก์)</label><input id="ct_line" placeholder="aloofpea หรือ https://line.me/ti/p/~aloofpea"></div>
+        <div><label>ลำดับการแสดง</label><input id="ct_order" type="number" value="5"></div>
+      </div>
+      <input type="hidden" id="ct_id">
+      <div style="height:14px"></div>
+      <button id="btnSaveCt">บันทึกผู้ติดต่อ</button>
+    </div>
+    <div class="card"><div style="overflow-x:auto"><table id="ctTable"></table></div></div>
+  </div>
+
   <!-- ── ค่าระบบ ── -->
   <div id="tab-cf" class="hide">
     <div class="card">
@@ -414,7 +435,8 @@ function load(){
     S.data=j;
     $('whoami').textContent=j.user.name+' · ผู้ดูแลระบบ';
     $('scLogin').classList.add('hide'); $('scMain').classList.remove('hide');
-    drawMap(); drawCpTable(); drawClTable(); drawRpTable(); drawSpTable(); drawHdTable(); drawCfTable(); drawShiftPoint(); fillCpSelect();
+    drawMap(); drawCpTable(); drawClTable(); drawRpTable(); drawSpTable(); drawHdTable();
+    drawCtTable(); drawCfTable(); drawShiftPoint(); fillCpSelect();
     loadOverview();
   });
 }
@@ -507,7 +529,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(
   b.onclick=function(){
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(x){x.classList.remove('on');});
     b.classList.add('on');
-    ['ov','cp','cl','rp','sp','hd','cf'].forEach(function(t){ $('tab-'+t).classList.toggle('hide', t!==b.dataset.t); });
+    ['ov','cp','cl','rp','sp','hd','ct','cf'].forEach(function(t){ $('tab-'+t).classList.toggle('hide', t!==b.dataset.t); });
     if(b.dataset.t==='cp' && S.map) setTimeout(function(){ S.map.invalidateSize(); },50);
     if(b.dataset.t==='ov') loadOverview();
   };
@@ -949,6 +971,49 @@ $('btnSaveHd').onclick=function(){
   api('saveHoliday',{item:{date:d,name:$('hd_name').value,kind:$('hd_kind').value}})
     .then(function(){ $('hd_name').value=''; return load(); })
     .then(function(){ toast('เพิ่มวันหยุดแล้ว'); }).catch(function(e){ toast(e.message); });
+};
+
+function drawCtTable(){
+  var h='<tr><th>ลำดับ</th><th>ชื่อ</th><th>ตำแหน่ง</th><th>เบอร์โทร</th><th>ไลน์</th><th></th></tr>';
+  (S.data.contacts||[]).forEach(function(c){
+    h+='<tr><td>'+esc(c.orderNo)+'</td><td><strong>'+esc(c.name)+'</strong></td>'+
+       '<td>'+esc(c.role||'')+'</td>'+
+       '<td>'+(c.phone?esc(c.phone):'<span class="muted">—</span>')+'</td>'+
+       '<td>'+(c.lineId?esc(c.lineId):'<span class="muted">—</span>')+'</td>'+
+       '<td><button class="ghost sm" data-ct="'+esc(c.contactId)+'">แก้</button> '+
+       '<button class="ghost sm" data-ctdel="'+esc(c.contactId)+'">ลบ</button></td></tr>';
+  });
+  $('ctTable').innerHTML=h;
+  Array.prototype.forEach.call($('ctTable').querySelectorAll('[data-ct]'),function(b){
+    b.onclick=function(){
+      var c=(S.data.contacts||[]).filter(function(x){return x.contactId===b.dataset.ct;})[0];
+      if(!c) return;
+      $('ct_id').value=c.contactId; $('ct_name').value=c.name; $('ct_role').value=c.role||'';
+      $('ct_phone').value=c.phone||''; $('ct_line').value=c.lineId||''; $('ct_order').value=c.orderNo||5;
+      window.scrollTo({top:0,behavior:'smooth'});
+    };
+  });
+  Array.prototype.forEach.call($('ctTable').querySelectorAll('[data-ctdel]'),function(b){
+    b.onclick=function(){
+      var c=(S.data.contacts||[]).filter(function(x){return x.contactId===b.dataset.ctdel;})[0];
+      if(!c || !confirm('ลบ '+c.name+' ออกจากรายชื่อติดต่อ?')) return;
+      api('saveContact',{item:{contactId:c.contactId},remove:true})
+        .then(load).then(function(){ toast('ลบแล้ว'); });
+    };
+  });
+}
+$('btnSaveCt').onclick=function(){
+  var nm=$('ct_name').value.trim();
+  if(!nm) return toast('ใส่ชื่อผู้ติดต่อ');
+  if(!$('ct_phone').value.trim() && !$('ct_line').value.trim())
+    return toast('ใส่เบอร์โทรหรือไลน์อย่างน้อยหนึ่งอย่าง');
+  api('saveContact',{item:{contactId:$('ct_id').value,name:nm,role:$('ct_role').value,
+       phone:$('ct_phone').value,lineId:$('ct_line').value,orderNo:$('ct_order').value}})
+    .then(function(){
+      $('ct_id').value=''; $('ct_name').value=''; $('ct_role').value='';
+      $('ct_phone').value=''; $('ct_line').value='';
+      return load();
+    }).then(function(){ toast('บันทึกแล้ว'); }).catch(function(e){ toast(e.message); });
 };
 
 function drawCfTable(){

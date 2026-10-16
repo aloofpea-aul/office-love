@@ -45,6 +45,7 @@ var SCHEMA = {
   RoundPlan      : ['planId','dayType','roundNo','schedTime','flexEndTime','graceEarlyMin','graceLateMin','active',
                     'mode','cpCodes','minStayMin'],
   Holidays       : ['date','name','kind'],
+  Contacts       : ['contactId','name','role','phone','lineId','orderNo','active','note'],
   Inspections    : ['inspId','ts','workDate','userId','userName','role','cpId','cpCode','cpName',
                     'lat','lng','distanceM','accuracyM','note','photoUrl'],
   PushSubs       : ['userId','endpoint','p256dh','auth','device','createdAt','active'],
@@ -139,6 +140,7 @@ function _route(req) {
       case 'saveRoundPlan'   : return apiSaveRoundPlan(auth(req, ['ADMIN']), req);
       case 'saveShiftPlan'   : return apiSaveShiftPlan(auth(req, ['ADMIN']), req);
       case 'saveHoliday'     : return apiSaveHoliday(auth(req, ['ADMIN']), req);
+      case 'saveContact'     : return apiSaveContact(auth(req, ['ADMIN']), req);
       case 'saveConfig'      : return apiSaveConfig(auth(req, ['ADMIN']), req);
       case 'uploadRefPhoto'  : return apiUploadRefPhoto(auth(req, ['ADMIN']), req);
       case 'lockMonth'       : return apiLockMonth(auth(req, ['ADMIN']), req);
@@ -1235,6 +1237,7 @@ function apiBootstrap(me) {
     gpsGoodM:    num(cfgGet('GPS_GOOD_M', 60), 60),
     gpsHuntSec:  num(cfgGet('GPS_HUNT_SEC', 20), 20),
     gpsReuseSec: num(cfgGet('GPS_REUSE_SEC', 45), 45),
+    contacts: contactList(),
     shiftPoint: (function () {
       var la = num(cfgGet('SHIFT_LAT', 0)), ln = num(cfgGet('SHIFT_LNG', 0));
       return (la && ln) ? { lat: la, lng: ln, radiusM: num(cfgGet('SHIFT_RADIUS_M', 20), 20) } : null;
@@ -1845,7 +1848,11 @@ function apiAdminData(me) {
       return { date: (h.date instanceof Date) ? fmt(h.date, 'yyyy-MM-dd') : String(h.date),
                name: String(h.name), kind: String(h.kind) };
     }),
-    config:      readTable('Config').map(cleanRow)
+    config:      readTable('Config').map(cleanRow),
+    contacts:    (function () { seedContacts();
+                   return readTable('Contacts').filter(function (c) { return bool(c.active); })
+                     .sort(function (a, b) { return num(a.orderNo, 99) - num(b.orderNo, 99); })
+                     .map(cleanRow); })()
   });
 }
 
@@ -2301,6 +2308,70 @@ function seedRoundPlan() {
 }
 
 /** จุดตรวจตั้งต้นจากระบบเดิม — พิกัดเป็นค่าชั่วคราว ต้องเดินเก็บจริงแล้วแก้ในหน้าแอดมิน */
+/**
+ * รายชื่อติดต่อฉุกเฉิน — เบอร์กลางใส่ให้พร้อมใช้ ส่วนคนในหน่วยงานเว้นเบอร์ไว้ให้กรอกเอง
+ * รันซ้ำได้ ไม่ทับของเดิม เพิ่มเฉพาะแถวที่ยังไม่มี
+ */
+function seedContacts() {
+  var have = {};
+  readTable('Contacts').forEach(function (c) { have[String(c.name).trim()] = true; });
+  [
+    ['ผู้จัดการ กฟส.อ่าวลึก', 'ผู้บังคับบัญชา',       '', '', 1,  'กรอกเบอร์ในหน้าผู้ดูแล'],
+    ['หัวหน้าเวร',            'ผู้บังคับบัญชา',       '', '', 2,  'กรอกเบอร์ในหน้าผู้ดูแล'],
+    ['รปภ. ผลัดถัดไป',        'เพื่อนร่วมงาน',        '', '', 3,  'กรอกเบอร์ในหน้าผู้ดูแล'],
+    ['สำนักงาน กฟส.อ่าวลึก',  'ที่ทำงาน',             '', '', 4,  'กรอกเบอร์ในหน้าผู้ดูแล'],
+    ['แจ้งเหตุด่วนเหตุร้าย',  'ตำรวจ',            '191',  '', 10, 'เบอร์กลาง ใช้ได้ทันที'],
+    ['ดับเพลิง',              'เหตุเพลิงไหม้',    '199',  '', 11, 'เบอร์กลาง ใช้ได้ทันที'],
+    ['การแพทย์ฉุกเฉิน',       'กู้ชีพ',           '1669', '', 12, 'เบอร์กลาง ใช้ได้ทันที'],
+    ['PEA Call Center',       'ไฟฟ้าขัดข้อง',     '1129', '', 13, 'เบอร์กลาง ใช้ได้ทันที'],
+    ['สายด่วนตำรวจท่องเที่ยว','เหตุทั่วไป',       '1155', '', 14, 'เบอร์กลาง ใช้ได้ทันที']
+  ].forEach(function (c) {
+    if (have[c[0]]) return;
+    appendRow('Contacts', { contactId: uid(), name: c[0], role: c[1], phone: c[2],
+                            lineId: c[3], orderNo: c[4], active: 'TRUE', note: c[5] });
+  });
+}
+
+/** รายชื่อติดต่อที่เปิดใช้งาน เรียงตามลำดับ — ส่งให้หน้าแอปทุกคน */
+function contactList() {
+  seedContacts();
+  return readTable('Contacts').filter(function (c) { return bool(c.active); })
+    .sort(function (a, b) { return num(a.orderNo, 99) - num(b.orderNo, 99); })
+    .map(function (c) {
+      return { contactId: String(c.contactId), name: String(c.name || ''),
+               role: String(c.role || ''), phone: String(c.phone || '').trim(),
+               lineId: String(c.lineId || '').trim(), note: String(c.note || '') };
+    });
+}
+
+/** ผู้ดูแลเพิ่ม/แก้/ลบรายชื่อติดต่อ */
+function apiSaveContact(me, req) {
+  var c = req.item || {}, id = String(c.contactId || '').trim();
+  var rows = readTable('Contacts'), hit = null;
+  rows.forEach(function (r) { if (String(r.contactId) === id) hit = r; });
+
+  if (req.remove) {
+    if (!hit) return err('ไม่พบรายชื่อนี้');
+    updateRow('Contacts', hit._row, { active: 'FALSE' });
+    audit(me.userId, 'CONTACT_OFF', 'CONTACT', id, null, { name: hit.name });
+    return ok({ removed: id });
+  }
+
+  var rec = {
+    name: String(c.name || '').trim(), role: String(c.role || '').trim(),
+    phone: String(c.phone || '').replace(/[^0-9+#*]/g, ''),
+    lineId: String(c.lineId || '').trim(), orderNo: num(c.orderNo, 99),
+    active: 'TRUE', note: String(c.note || '')
+  };
+  if (!rec.name) return err('ต้องใส่ชื่อผู้ติดต่อ');
+  if (!rec.phone && !rec.lineId) return err('ต้องมีเบอร์โทรหรือไลน์อย่างน้อยหนึ่งอย่าง');
+
+  if (hit) { updateRow('Contacts', hit._row, rec); }
+  else { rec.contactId = uid(); appendRow('Contacts', rec); id = rec.contactId; }
+  audit(me.userId, 'CONTACT_SAVE', 'CONTACT', id, null, { name: rec.name });
+  return ok({ contactId: id });
+}
+
 function seedCheckpoints() {
   if (readTable('Checkpoints').length) return;
   var base = { lat: 8.365087, lng: 98.749451 };
